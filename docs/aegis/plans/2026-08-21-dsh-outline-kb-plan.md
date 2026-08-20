@@ -839,7 +839,7 @@ node D:\deepseek\deepseek-harness-master\apps\cli\lib\bin.js --profile web --dum
 
 | 风险 | 缓解 |
 | --- | --- |
-| npm `@deepseek-ai/dsh-tools@0.0.1-rc.1` 与本机 rc.5 类型漂移导致 typecheck 失败 | 核心 API 已核实兼容；若失败启用 `tsconfig.local.json`：`paths` 指向 `D:/deepseek/deepseek-harness-master/packages/core/tools/lib/types/index.d.ts` 等本机构建产物（rc.5，与运行时一致），并用 `tsc -p tsconfig.local.json` 构建 |
+| npm `@deepseek-ai/*` 依赖树在 npm 上不完整（dsh-type-meta 等 404），无法用 npm devDeps 构建 | **实现落地方案**：devDeps 仅保留 typescript/vitest/@types/node；`@deepseek-ai/*` 通过插件 `node_modules/@deepseek-ai` junction 指向 `~/.dsh/profiles/node_modules/@deepseek-ai`（DSH 维护的扁平目录，绝对路径链接）解析，与运行时内盒包一致；README 记录了其它机器上的复现步骤（原计划中的 tsconfig.local.json 方案被此方案取代） |
 | 未配置时破坏 web profile 启动 | 设计细化：config 字段可选，工具调用时才报配置错误（Task 1/5） |
 | 内网实例不可达，本机无法真实验收 | Mock server + smoke；用户在公司机器配置后验收（README 指引） |
 | Outline API 字段变化 | 只依赖 OpenAPI 稳定字段；客户端容错（缺字段用空串） |

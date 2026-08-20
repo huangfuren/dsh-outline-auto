@@ -1,0 +1,35 @@
+{
+    "name":  "dsh-outline-kb",
+    "version":  "0.1.0",
+    "description":  "DSH web plugin: search and read the company Outline knowledge base from conversations.",
+    "type":  "module",
+    "license":  "MIT",
+    "main":  "lib/index.js",
+    "types":  "lib/index.d.ts",
+    "files":  [
+                  "lib",
+                  "src",
+                  "cordis.patch.yml",
+                  "dsh.plugin.json",
+                  "README.md"
+              ],
+    "engines":  {
+                    "node":  "\u003e=22.13"
+                },
+    "dsh":  {
+                "bundle":  {
+                               "patch":  "./cordis.patch.yml"
+                           }
+            },
+    "scripts":  {
+                    "build":  "tsc -p tsconfig.json",
+                    "typecheck":  "tsc --noEmit",
+                    "test":  "vitest run",
+                    "smoke":  "node scripts/smoke.mjs"
+                },
+    "devDependencies":  {
+                            "@types/node":  "^24.0.0",
+                            "typescript":  "^5.6.0",
+                            "vitest":  "^4.1.8"
+                        }
+}
