@@ -1,4 +1,4 @@
-# dsh-outline-kb
+# dsh-outline-ai
 
 DSH（DeepSeek Harness）Web 插件：在对话中**搜索并读取公司 Outline 知识库**文档。
 
@@ -27,8 +27,8 @@ node <dsh-checkout>/apps/cli/lib/bin.js plugin --profile web add <本目录绝�
 
 ```yaml
 - insert:
-    - id: outline-kb
-      name: 'dsh-outline-kb'
+    - id: outline-ai
+      name: 'dsh-outline-ai'
       config:
         baseUrl: https://outline.你的公司域名.com
 ```
@@ -67,10 +67,20 @@ New-Item -ItemType Junction -Path .\node_modules\@deepseek-ai -Target "$env:USER
 
 > 等 DSH 官方将 rc 版本发布到 npm 后，可改回在 `devDependencies` 里声明这些包。
 
+## 启停
+
+插件会出现在 设置 → 插件 → 插件列表 中（只读状态）。启停开关在 `~/.dsh/profiles/web/cordis.patch.yml`：
+
+```yaml
+# 禁用（取消注释即生效，实时热加载，无需重启 GUI）：
+# - id: outline-ai
+#   disabled: true
+```
+
 ## 卸载
 
 ```sh
-dsh plugin --profile web remove dsh-outline-kb
+dsh plugin --profile web remove dsh-outline-ai
 ```
 
 ## 常见问题
