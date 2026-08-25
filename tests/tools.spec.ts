@@ -32,6 +32,21 @@ describe('outline_search', () => {
     const tool = outlineSearchTool(() => { throw new Error('dsh-outline-ai 未配置：…') }, 10)
     await expect(tool.execute({ query: 'x' }, exec)).rejects.toThrow('未配置')
   })
+
+  it('渲染结果时标题特殊字符被转义、含括号 URL 被 <> 包裹', async () => {
+    const tool = outlineSearchTool(() => fakeClient(), 10)
+    const value = [{
+      id: 'doc-1',
+      title: '部署[规范]（测试版）',
+      url: 'https://outline.example.com/doc/a(b)',
+      snippet: '片段',
+      collectionId: 'c',
+      updatedAt: '',
+    }]
+    const rendered = (tool as any).output.render({}, value)
+    const text = Array.isArray(rendered) ? rendered.map((r: any) => r.text).join('\n') : String(rendered)
+    expect(text).toContain('[部署\\[规范\\]（测试版）](<https://outline.example.com/doc/a(b)>)')
+  })
 })
 
 describe('outline_get_document', () => {

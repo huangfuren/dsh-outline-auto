@@ -56,6 +56,82 @@ describe('OutlineClient', () => {
     expect(await client.searchDocuments('xyz', 10)).toEqual([])
   })
 
+  it('相对文档 url 被解析为可点击的绝对地址', async () => {
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com/',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async () => ({ status: 200, body: SEARCH_BODY })),
+    })
+    const [hit] = await client.searchDocuments('部署', 5)
+    expect(hit.url).toBe('https://outline.example.com/doc/deploy')
+
+    const infoClient = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async () => ({ status: 200, body: INFO_BODY })),
+    })
+    const doc = await infoClient.getDocument('doc-1')
+    expect(doc.url).toBe('https://outline.example.com/doc/deploy')
+  })
+
+  it('已是绝对地址的 url 保持不变', async () => {
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async () => ({
+        status: 200,
+        body: {
+          data: [
+            {
+              context: '',
+              document: { id: 'doc-1', title: 'T', url: 'https://outline.other.com/doc/x', collectionId: 'c', updatedAt: '2026-01-01T00:00:00Z' },
+            },
+          ],
+        },
+      })),
+    })
+    const [hit] = await client.searchDocuments('部署', 5)
+    expect(hit.url).toBe('https://outline.other.com/doc/x')
+  })
+
+  it('snippet 与标题中的 HTML 标签会被清理', async () => {
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async () => ({
+        status: 200,
+        body: {
+          data: [
+            {
+              context: 'TDD的本质：<b>测试</b>不是&nbsp;验证代码，而是设计代码',
+              document: { id: 'doc-1', title: '<b>部署</b>规范', url: '/doc/deploy', collectionId: 'c', updatedAt: '2026-01-01T00:00:00Z' },
+            },
+          ],
+        },
+      })),
+    })
+    const [hit] = await client.searchDocuments('部署', 5)
+    expect(hit.snippet).toBe('TDD的本质：测试不是 验证代码，而是设计代码')
+    expect(hit.title).toBe('部署规范')
+  })
+
+  it('getDocument 对同一文档走短期缓存，不重复请求', async () => {
+    let calls = 0
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async () => {
+        calls += 1
+        return { status: 200, body: INFO_BODY }
+      }),
+    })
+    const first = await client.getDocument('doc-1')
+    const second = await client.getDocument('doc-1')
+    expect(first.title).toBe('部署规范')
+    expect(second).toEqual(first)
+    expect(calls).toBe(1)
+  })
+
   it('getDocument 返回 Markdown 全文', async () => {
     const client = new OutlineClient({
       baseUrl: 'https://outline.example.com',

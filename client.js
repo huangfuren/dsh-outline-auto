@@ -21,7 +21,7 @@ window.__ModuleLoader__.load({
 		// 与官方卡片一致的中文/英文文案（对齐 ui-settings-plugins locales）
 		const zh = {
 			cardTitle: "Outline 知识库",
-			cardDescription: "在对话中搜索 / 读取公司 Outline 知识库文档（outline_search / outline_get_document）。",
+			cardDescription: "在对话中搜索 / 读取公司 Outline 知识库文档。",
 			baseUrl: "服务地址 (baseUrl)",
 			baseUrlHint: "Outline 实例根地址，如 https://outline.example.com",
 			apiToken: "API Token",
@@ -40,7 +40,7 @@ window.__ModuleLoader__.load({
 		};
 		const en = {
 			cardTitle: "Outline Knowledge Base",
-			cardDescription: "Search / read company Outline knowledge base documents from conversations (outline_search / outline_get_document).",
+			cardDescription: "Search / read company Outline knowledge base documents from conversations.",
 			baseUrl: "Service URL (baseUrl)",
 			baseUrlHint: "Outline instance root, e.g. https://outline.example.com",
 			apiToken: "API Token",

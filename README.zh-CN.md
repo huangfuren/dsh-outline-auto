@@ -17,6 +17,8 @@
 ## 功能
 
 - **两个工具**（`outline_search(query, limit?)` / `outline_get_document(id, maxLength?)`）——关键词搜索返回标题、命中片段、文档 id 与链接；按 id 取全文 Markdown（超长可截断）。
+- **链接可直接点击**——文档链接按 `baseUrl` 解析为绝对地址（Outline 返回的是相对路径）；片段与标题会清理 HTML 标签，聊天里显示干净。
+- **文档读取缓存（60 秒）**——会话内重复读取同一文档不会再次请求 API。
 - **GUI 配置卡片**——设置 → 插件 → 插件配置 里的 **Outline 知识库** 卡片（与官方卡片同款 UI）；填 `baseUrl` 和 API Token，点保存即完成。
 - **每人各填各的 token**——每个用户在 GUI 里配置自己的凭据（存于 `$DSH_HOME/settings.yaml`，不进 git）；适合团队分发。
 - **未配置也安全**——插件正常加载，工具返回明确的中文错误提示，不影响 GUI 启动。
@@ -34,16 +36,21 @@
 
 ## 安装
 
-开发（link 安装，实时源码）：
+**热安装（推荐，无需重启）：**
 
 ```bash
-dsh plugin --profile web add link:/path/to/dsh-outline-ai
+git clone https://github.com/huangfuren/dsh-outline-auto.git
+cd dsh-outline-ai
+node scripts/hot-install.mjs          # 或：node scripts/hot-install.mjs --profile <profile>
 ```
 
-GitHub（已发布）：
+脚本会把插件链接进你的 profile，并向 `cordis.patch.yml` 追加 insert 行——DSH 热加载后**宿主端（工具）立即生效**，浏览器刷新一次页面即可看到设置卡片，**全程无需重启 `dsh web`**。卸载：`node scripts/hot-install.mjs --remove`。
+
+**传统安装（需要重启）：**
 
 ```bash
-dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-ai.git
+dsh plugin --profile web add link:/path/to/dsh-outline-ai        # 开发（link 安装，实时源码）
+dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.git   # 已发布
 ```
 
 安装后需**重启 `dsh web`**（host 半区启动时加载；client 半区注册设置卡片）。

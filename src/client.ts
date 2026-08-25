@@ -29,12 +29,34 @@ export class OutlineClient {
   private readonly timeoutMs: number
   private readonly baseUrl: string
   private readonly apiToken: string
+  /** getDocument 的短期缓存（key = 文档 id），避免会话内重复读取同一文档反复请求 API。 */
+  private readonly docCache = new Map<string, { expires: number; doc: OutlineDocument }>()
+  private static readonly DOC_CACHE_TTL_MS = 60_000
 
   constructor(options: OutlineClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '')
     this.apiToken = options.apiToken
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch
     this.timeoutMs = options.timeoutMs ?? 15000
+  }
+
+  /** 去掉 Outline 片段/标题里的 HTML 标签（如 <b>），避免原样渲染进聊天。 */
+  private static stripHtml(text: string): string {
+    return text
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  /** 把 Outline API 返回的相对文档路径（如 /doc/xxx）解析为可点击的绝对地址。 */
+  private absolutize(url: string): string {
+    if (!url) return ''
+    if (/^https?:\/\//i.test(url)) return url
+    return `${this.baseUrl}${url.startsWith('/') ? url : '/' + url}`
   }
 
   private async request<T>(path: string, body: Record<string, unknown>): Promise<T> {
@@ -84,9 +106,9 @@ export class OutlineClient {
       const document = (record.document ?? {}) as Record<string, unknown>
       return {
         id: typeof document.id === 'string' ? document.id : '',
-        title: typeof document.title === 'string' ? document.title : '(无标题)',
-        url: typeof document.url === 'string' ? document.url : '',
-        snippet: typeof record.context === 'string' ? record.context : '',
+        title: OutlineClient.stripHtml(typeof document.title === 'string' ? document.title : '(无标题)'),
+        url: this.absolutize(typeof document.url === 'string' ? document.url : ''),
+        snippet: OutlineClient.stripHtml(typeof record.context === 'string' ? record.context : ''),
         collectionId: typeof document.collectionId === 'string' ? document.collectionId : '',
         updatedAt: typeof document.updatedAt === 'string' ? document.updatedAt : '',
       }
@@ -94,13 +116,17 @@ export class OutlineClient {
   }
 
   async getDocument(id: string): Promise<OutlineDocument> {
+    const cached = this.docCache.get(id)
+    if (cached !== undefined && cached.expires > Date.now()) return cached.doc
     const data = await this.request<Record<string, unknown>>(`/api/documents.info`, { id })
-    return {
+    const doc: OutlineDocument = {
       id: typeof data.id === 'string' ? data.id : id,
-      title: typeof data.title === 'string' ? data.title : '(无标题)',
-      url: typeof data.url === 'string' ? data.url : '',
+      title: OutlineClient.stripHtml(typeof data.title === 'string' ? data.title : '(无标题)'),
+      url: this.absolutize(typeof data.url === 'string' ? data.url : ''),
       text: typeof data.text === 'string' ? data.text : '',
       updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : '',
     }
+    this.docCache.set(id, { expires: Date.now() + OutlineClient.DOC_CACHE_TTL_MS, doc })
+    return doc
   }
 }

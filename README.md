@@ -17,6 +17,8 @@ A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getou
 ## Features
 
 - **Two tools** (`outline_search(query, limit?)` / `outline_get_document(id, maxLength?)`) — keyword search returns titles, snippets, document ids and links; document fetch returns full Markdown (length-capable).
+- **Clickable results** — document links are resolved to absolute URLs against your `baseUrl` (Outline returns relative paths); snippets and titles are cleaned of HTML tags so results render cleanly in chat.
+- **Document read cache (60s TTL)** — re-reading the same document within a session does not hit the API again.
 - **GUI configuration card** — Settings → Plugins → plugin configuration, an **Outline Knowledge Base** card matching the official card UI; fill in `baseUrl` and API token, click save, done.
 - **Per-user credentials** — every user configures their own token in the GUI (stored under `$DSH_HOME/settings.yaml`, never in git); ideal for team distribution.
 - **Safe when unconfigured** — the plugin loads normally and tools return clear Chinese error messages; the GUI is never blocked.
@@ -34,16 +36,21 @@ A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getou
 
 ## Installation
 
-Development (link install, live source):
+**Hot install (recommended — no restart):**
 
 ```bash
-dsh plugin --profile web add link:/path/to/dsh-outline-ai
+git clone https://github.com/huangfuren/dsh-outline-auto.git
+cd dsh-outline-ai
+node scripts/hot-install.mjs          # or: node scripts/hot-install.mjs --profile <profile>
 ```
 
-GitHub (published):
+The script links the plugin into your profile and appends an insert row to `cordis.patch.yml`, which DSH hot-reloads: the host half (tools) works **immediately**, and the settings card appears after a browser page refresh — **no `dsh web` restart needed**. Uninstall with `node scripts/hot-install.mjs --remove`.
+
+**Traditional install (requires a restart):**
 
 ```bash
-dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-ai.git
+dsh plugin --profile web add link:/path/to/dsh-outline-ai        # development, live source
+dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.git   # published
 ```
 
 Restart `dsh web` after installing (the host half loads at startup; the client half registers the settings card).

@@ -5,11 +5,21 @@ export const SEARCH_MAX_LIMIT = 25
 export const DOCUMENT_DEFAULT_MAX_LENGTH = 20000
 export const DOCUMENT_MAX_LENGTH_CAP = 200000
 
+/** 转义链接文字里的 Markdown 特殊字符，避免标题含 []() 时破坏 [title](url) 链接。 */
+function escapeLinkText(text: string): string {
+  return text.replace(/[\\[\]]/g, (ch) => (ch === '\\' ? '\\\\' : '\\' + ch))
+}
+
+/** URL 含空格或括号时用 <> 包裹，保证 markdown 链接闭合正确。 */
+function wrapUrl(url: string): string {
+  return /[\s()]/.test(url) ? `<${url}>` : url
+}
+
 function renderSearchResults(hits: OutlineSearchHit[]): string {
   if (hits.length === 0) return '未找到匹配文档，可尝试更换关键词。'
   const lines = hits.map((hit) => {
     const meta = hit.snippet.length > 0 ? ` — ${hit.snippet}` : ''
-    return `- [${hit.title}](${hit.url})${meta}（id: ${hit.id}）`
+    return `- [${escapeLinkText(hit.title)}](${wrapUrl(hit.url)})${meta}（id: ${hit.id}）`
   })
   return `找到 ${hits.length} 篇文档：\n${lines.join('\n')}\n\n如需查看某篇全文，请使用 outline_get_document 工具（参数 id）。`
 }

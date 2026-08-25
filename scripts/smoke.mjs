@@ -1,13 +1,22 @@
 import { createMockOutlineServer } from './mock-outline-server.mjs'
 import { apply } from '../lib/index.js'
 
+// 冒烟必须自包含：清掉环境变量，避免环境里的 OUTLINE_* 盖过下方 config（优先级 GUI > env > config）。
+delete process.env.OUTLINE_BASE_URL
+delete process.env.OUTLINE_API_TOKEN
+
 const server = createMockOutlineServer()
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
 const port = server.address().port
 const baseUrl = `http://127.0.0.1:${port}`
 
 const tools = []
-const ctx = { tools: { register: (definition) => { tools.push(definition) } } }
+// 冒烟只测工具链路，不涉及 settings 服务：ctx.inject 给个空实现，
+// 使 installSettingsSection 静默跳过（settingsSource 保持默认，走 config/env）。
+const ctx = {
+  tools: { register: (definition) => { tools.push(definition) } },
+  inject: () => () => {},
+}
 apply(ctx, { baseUrl, apiToken: 'test-token', timeoutMs: 5000, searchLimit: 5 })
 const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool]))
 const exec = {}
