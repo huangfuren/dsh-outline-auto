@@ -4,11 +4,11 @@ import { Config } from './config.js'
 import { OutlineClient } from './client.js'
 import { outlineSearchTool, outlineGetDocumentTool } from './tools.js'
 
-export const name = 'dsh-outline-ai'
+export const name = 'dsh-outline-auto'
 export const inject = ['tools']
 
 /** GUI 设置命名空间（设置 → 插件 → 插件配置 的卡片读写它，持久化在 settings.yaml）。 */
-const SETTINGS_NS = settingsNamespace('outline-ai')
+const SETTINGS_NS = settingsNamespace('outline-auto')
 
 export function apply(ctx: Context, config: Config = {} as Config) {
   // 连接配置优先级（与 README 一致）：GUI 卡片（settings.yaml 用户层）→ 环境变量 → 插件配置行。
@@ -25,7 +25,7 @@ export function apply(ctx: Context, config: Config = {} as Config) {
       || (config.apiToken ?? '').trim()
     if (!baseUrl || !apiToken) {
       throw new Error(
-        'dsh-outline-ai 未配置：需要 baseUrl 与 apiToken（可在 设置 → 插件 → 插件配置 填写，或环境变量 OUTLINE_BASE_URL / OUTLINE_API_TOKEN）。配置方法见插件 README。',
+        'dsh-outline-auto 未配置：需要 baseUrl 与 apiToken（可在 设置 → 插件 → 插件配置 填写，或环境变量 OUTLINE_BASE_URL / OUTLINE_API_TOKEN）。配置方法见插件 README。',
       )
     }
     return new OutlineClient({ baseUrl, apiToken, timeoutMs: config.timeoutMs ?? 15000 })

@@ -1,5 +1,5 @@
 {
-  "id": "dsh-external/dsh-outline-ai",
+  "id": "dsh-external/dsh-outline-auto",
   "version": "0.1.0",
   "main": "./lib/index.js",
   "description": "在 DSH 对话中搜索并读取 Outline 知识库文档（outline_search / outline_get_document）",

@@ -1,4 +1,4 @@
-# dsh-outline-ai
+# dsh-outline-auto
 
 [简体中文](./README.zh-CN.md)
 
@@ -40,7 +40,7 @@ A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getou
 
 ```bash
 git clone https://github.com/huangfuren/dsh-outline-auto.git
-cd dsh-outline-ai
+cd dsh-outline-auto
 node scripts/hot-install.mjs          # or: node scripts/hot-install.mjs --profile <profile>
 ```
 
@@ -49,7 +49,7 @@ The script links the plugin into your profile and appends an insert row to `cord
 **Traditional install (requires a restart):**
 
 ```bash
-dsh plugin --profile web add link:/path/to/dsh-outline-ai        # development, live source
+dsh plugin --profile web add link:/path/to/dsh-outline-auto        # development, live source
 dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.git   # published
 ```
 

@@ -1,5 +1,5 @@
 {
-    "name": "dsh-outline-ai",
+    "name": "dsh-outline-auto",
     "version": "0.1.0",
     "description": "DSH web plugin: search and read the company Outline knowledge base from conversations.",
     "type": "module",

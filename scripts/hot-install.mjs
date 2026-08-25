@@ -1,4 +1,4 @@
-// dsh-outline-ai 热安装/热卸载脚本 —— 安装后无需重启 dsh web
+// dsh-outline-auto 热安装/热卸载脚本 —— 安装后无需重启 dsh web
 //
 // 原理：DSH 对 profile 的 cordis.patch.yml 做热加载（HMR），
 // 把插件作为 insert 行追加进去会即时重组 loader 树（宿主端立即生效，
@@ -16,8 +16,8 @@ import { fileURLToPath } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PLUGIN_DIR = resolve(HERE, '..')
 const PKG = JSON.parse(readFileSync(join(PLUGIN_DIR, 'package.json'), 'utf8'))
-const PACKAGE_NAME = PKG.name // dsh-outline-ai
-const ROW_ID = 'outline-ai'
+const PACKAGE_NAME = PKG.name // dsh-outline-auto
+const ROW_ID = 'outline-auto'
 const INSERT_BLOCK = `- insert:\n    - id: ${ROW_ID}\n      name: '${PACKAGE_NAME}'\n`
 
 const args = process.argv.slice(2)
@@ -71,7 +71,7 @@ function isBundleInstalled() {
   return manifest?.dsh?.profile?.bundles?.includes(PACKAGE_NAME) === true
 }
 
-/** profile patch 中是否已存在本插件的 insert 行（- insert: 下带 id: outline-ai）。 */
+/** profile patch 中是否已存在本插件的 insert 行（- insert: 下带 id: outline-auto）。 */
 function hasInsertRow(patch) {
   const lines = patch.split('\n')
   for (let i = 0; i < lines.length; i += 1) {
@@ -141,9 +141,9 @@ function uninstall() {
 }
 
 if (remove) {
-  console.log(`dsh-outline-ai 热卸载 → profile: ${profile}`)
+  console.log(`dsh-outline-auto 热卸载 → profile: ${profile}`)
   uninstall()
 } else {
-  console.log(`dsh-outline-ai 热安装 → profile: ${profile}`)
+  console.log(`dsh-outline-auto 热安装 → profile: ${profile}`)
   install()
 }

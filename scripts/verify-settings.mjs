@@ -37,11 +37,11 @@ try {
   ctx.plugin(FileSettingsProvider, { dshHome: tmpHome, watch: false })
   ctx.plugin(plugin, {})
 
-  await waitFor(() => ctx.settings?.get('outline-ai') !== undefined, 'settings namespace registration')
-  console.log('[1] 命名空间已注册，解析值 =', JSON.stringify(ctx.settings.get('outline-ai')))
+  await waitFor(() => ctx.settings?.get('outline-auto') !== undefined, 'settings namespace registration')
+  console.log('[1] 命名空间已注册，解析值 =', JSON.stringify(ctx.settings.get('outline-auto')))
 
   // 模拟 GUI 卡片保存：写入用户层
-  await ctx.settings.update('outline-ai', {
+  await ctx.settings.update('outline-auto', {
     baseUrl: BASE_URL,
     apiToken: API_TOKEN,
   })

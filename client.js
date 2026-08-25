@@ -1,13 +1,13 @@
-// dsh-outline-ai 浏览器半区（单文件模块，无外部构建依赖）
+// dsh-outline-auto 浏览器半区（单文件模块，无外部构建依赖）
 //
 // 职责：在 设置 → 插件 → 插件配置 注册一张配置卡片（settings.plugin.item 槽位，
-// key = 'outline-ai' 命名空间），编辑 Outline 知识库连接的 baseUrl / apiToken。
+// key = 'outline-auto' 命名空间），编辑 Outline 知识库连接的 baseUrl / apiToken。
 // 卡片外观与官方卡片（终端 / Agent 循环 / 网页搜索）保持一致：可折叠头部 +
 // chevron + 字段组 + 底部操作栏，样式使用同一套 --dsw-alias-* 主题变量。
-// 数据经 settingsScope 服务写入宿主端 settings.yaml 的 outline-ai 命名空间，
+// 数据经 settingsScope 服务写入宿主端 settings.yaml 的 outline-auto 命名空间，
 // 宿主插件（lib/index.js）通过 installSettingsSection 读取，保存后实时生效。
 window.__ModuleLoader__.load({
-	id: "dsh-outline-ai",
+	id: "dsh-outline-auto",
 	factory: (require) => {
 		var module = { exports: {} };
 		var exports = module.exports;
@@ -15,8 +15,8 @@ window.__ModuleLoader__.load({
 		const React = require("react");
 
 		// 字典命名空间与 settings 命名空间 / 槽位 key（三者同名便于定位）
-		const NS = "settings.outlineAi";
-		const NS_KEY = "outline-ai";
+		const NS = "settings.outlineAuto";
+		const NS_KEY = "outline-auto";
 
 		// 与官方卡片一致的中文/英文文案（对齐 ui-settings-plugins locales）
 		const zh = {
@@ -104,10 +104,10 @@ window.__ModuleLoader__.load({
 		/** 注入一次样式（挂到 head，带 data-plugin 便于宿主按插件生命周期清理）。 */
 		function injectStyles() {
 			if (typeof document === "undefined") return;
-			if (document.getElementById("dsh-outline-ai-styles")) return;
+			if (document.getElementById("dsh-outline-auto-styles")) return;
 			const style = document.createElement("style");
-			style.id = "dsh-outline-ai-styles";
-			style.setAttribute("data-plugin", "dsh-outline-ai");
+			style.id = "dsh-outline-auto-styles";
+			style.setAttribute("data-plugin", "dsh-outline-auto");
 			style.textContent = CSS_TEXT;
 			document.head.appendChild(style);
 		}
@@ -275,7 +275,7 @@ window.__ModuleLoader__.load({
 		/** 复刻官方 PluginCard 的卡片外壳（可折叠头部 + 字段组 + 底部操作栏）。 */
 		function OutlineCard(props) {
 			const [open, setOpen] = React.useState(false);
-			const state = props.useOutlineAiCard((s) => s);
+			const state = props.useOutlineAutoCard((s) => s);
 			const t = props.t;
 			if (!state.available) return null;
 			const blocked = !state.dirty || state.invalid || state.saving;
@@ -305,7 +305,7 @@ window.__ModuleLoader__.load({
 						"div", { className: "dsh-oac-body" },
 						!state.writable ? React.createElement("p", { className: "dsh-oac-readOnly", role: "status" }, t("readOnly")) : null,
 						React.createElement(ValueField, {
-							id: "outline-ai-baseUrl",
+							id: "outline-auto-baseUrl",
 							label: t("baseUrl"),
 							hint: t("baseUrlHint"),
 							overriddenLabel: t("overridden"),
@@ -318,7 +318,7 @@ window.__ModuleLoader__.load({
 							onReset: () => { props.resetField("baseUrl"); },
 						}),
 						React.createElement(ValueField, {
-							id: "outline-ai-apiToken",
+							id: "outline-auto-apiToken",
 							label: t("apiToken"),
 							hint: t("apiTokenHint"),
 							overriddenLabel: t("overridden"),
@@ -354,21 +354,21 @@ window.__ModuleLoader__.load({
 
 		function apply(ctx) {
 			injectStyles();
-			ctx.effect(() => ctx.locale.register(NS, { zh, en }), "dsh-outline-ai: settings card locale");
+			ctx.effect(() => ctx.locale.register(NS, { zh, en }), "dsh-outline-auto: settings card locale");
 			const controller = createController(ctx.settingsScope.bind({ namespace: NS_KEY }));
 			ctx.slots.register({
 				name: "settings.plugin.item",
-				id: "outline-ai",
+				id: "outline-auto",
 				key: NS_KEY,
 				order: 30,
 				locale: NS,
-				inject: () => ({ hooks: { outlineAiCard: controller.store }, ...controller.actions }),
+				inject: () => ({ hooks: { outlineAutoCard: controller.store }, ...controller.actions }),
 			}, OutlineCard);
 		}
 
 		const inject = ["slots", "locale", "settingsScope"];
 
-		exports.name = "dsh-outline-ai";
+		exports.name = "dsh-outline-auto";
 		exports.inject = inject;
 		exports.apply = apply;
 		exports.internals = Object.freeze({

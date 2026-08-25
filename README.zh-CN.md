@@ -1,4 +1,4 @@
-# dsh-outline-ai
+# dsh-outline-auto
 
 [English](./README.md)
 
@@ -40,7 +40,7 @@
 
 ```bash
 git clone https://github.com/huangfuren/dsh-outline-auto.git
-cd dsh-outline-ai
+cd dsh-outline-auto
 node scripts/hot-install.mjs          # 或：node scripts/hot-install.mjs --profile <profile>
 ```
 
@@ -49,7 +49,7 @@ node scripts/hot-install.mjs          # 或：node scripts/hot-install.mjs --pro
 **传统安装（需要重启）：**
 
 ```bash
-dsh plugin --profile web add link:/path/to/dsh-outline-ai        # 开发（link 安装，实时源码）
+dsh plugin --profile web add link:/path/to/dsh-outline-auto        # 开发（link 安装，实时源码）
 dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.git   # 已发布
 ```
 
