@@ -6,6 +6,7 @@ A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getou
 
 > Project status: 0.1.0. The current feature set is implemented and covered by unit tests, a Mock-server smoke, and a settings-chain integration check; cross-version compatibility beyond the development environment is not yet certified.
 
+
 ## The core idea
 
 - The knowledge base is one search away: **you give a keyword, it gives you document links**.
