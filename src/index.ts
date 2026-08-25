@@ -2,7 +2,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { Config } from './config.js'
 import { OutlineClient } from './client.js'
-import { outlineSearchTool, outlineGetDocumentTool } from './tools.js'
+import { outlineSearchTool, outlineGetDocumentTool, outlineCountTool } from './tools.js'
 
 export const name = 'dsh-outline-auto'
 export const inject = ['tools']
@@ -40,4 +40,5 @@ export function apply(ctx: Context, config: Config = {} as Config) {
 
   ctx.tools.register(outlineSearchTool(makeClient, config.searchLimit ?? 10))
   ctx.tools.register(outlineGetDocumentTool(makeClient))
+  ctx.tools.register(outlineCountTool(makeClient))
 }

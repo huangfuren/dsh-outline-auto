@@ -1,12 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { outlineSearchTool, outlineGetDocumentTool } from '../src/tools.js'
+import { outlineSearchTool, outlineGetDocumentTool, outlineCountTool } from '../src/tools.js'
 import { OutlineApiError } from '../src/errors.js'
 import type { OutlineClient } from '../src/client.js'
 
 function fakeClient(overrides: Partial<OutlineClient> = {}): OutlineClient {
   return {
-    searchDocuments: async (query: string) => [{ id: 'doc-1', title: query, url: '/d', snippet: 's', collectionId: '', updatedAt: '' }],
+    searchDocuments: async (query: string) => ({ total: 1, hits: [{ id: 'doc-1', title: query, url: '/d', snippet: 's', collectionId: '', updatedAt: '' }] }),
     getDocument: async (id: string) => ({ id, title: 'T', url: '/d', text: 'body', updatedAt: '' }),
+    countDocuments: async () => 42,
     ...overrides,
   } as unknown as OutlineClient
 }
@@ -14,16 +15,17 @@ function fakeClient(overrides: Partial<OutlineClient> = {}): OutlineClient {
 const exec = {} as never
 
 describe('outline_search', () => {
-  it('execute 返回归一化结果', async () => {
+  it('execute 返回 {total, hits} 归一化结果', async () => {
     const tool = outlineSearchTool(() => fakeClient(), 10)
-    const result = await tool.execute({ query: '部署' }, exec)
-    expect(result).toHaveLength(1)
-    expect((result as any)[0].id).toBe('doc-1')
+    const result = await tool.execute({ query: '部署' }, exec) as any
+    expect(result.total).toBe(1)
+    expect(result.hits).toHaveLength(1)
+    expect(result.hits[0].id).toBe('doc-1')
   })
 
   it('limit 超界被钳制', async () => {
     let seen = 0
-    const tool = outlineSearchTool(() => fakeClient({ searchDocuments: async (_q, limit) => { seen = limit; return [] } }), 10)
+    const tool = outlineSearchTool(() => fakeClient({ searchDocuments: async (_q, limit) => { seen = limit; return { total: 0, hits: [] } } }), 10)
     await tool.execute({ query: 'x', limit: 999 }, exec)
     expect(seen).toBe(25)
   })
@@ -35,17 +37,28 @@ describe('outline_search', () => {
 
   it('渲染结果时标题特殊字符被转义、含括号 URL 被 <> 包裹', async () => {
     const tool = outlineSearchTool(() => fakeClient(), 10)
-    const value = [{
-      id: 'doc-1',
-      title: '部署[规范]（测试版）',
-      url: 'https://outline.example.com/doc/a(b)',
-      snippet: '片段',
-      collectionId: 'c',
-      updatedAt: '',
-    }]
+    const value = {
+      total: 1,
+      hits: [{
+        id: 'doc-1',
+        title: '部署[规范]（测试版）',
+        url: 'https://outline.example.com/doc/a(b)',
+        snippet: '片段',
+        collectionId: 'c',
+        updatedAt: '',
+      }],
+    }
     const rendered = (tool as any).output.render({}, value)
     const text = Array.isArray(rendered) ? rendered.map((r: any) => r.text).join('\n') : String(rendered)
     expect(text).toContain('[部署\\[规范\\]（测试版）](<https://outline.example.com/doc/a(b)>)')
+  })
+})
+
+describe('outline_count', () => {
+  it('execute 返回文档总数', async () => {
+    const tool = outlineCountTool(() => fakeClient())
+    const result = await tool.execute({} as never, exec) as any
+    expect(result.total).toBe(42)
   })
 })
 

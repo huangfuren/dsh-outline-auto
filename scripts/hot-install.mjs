@@ -30,6 +30,12 @@ if (!home) {
   console.error('无法确定用户主目录（USERPROFILE/HOME 未设置）')
   process.exit(2)
 }
+
+// 插件目录若在临时位置（如 TEMP），提示克隆到稳定路径，避免删掉临时目录后 junction 失效。
+const tempDirs = [process.env.TEMP, process.env.TMP, '/tmp', '/var/tmp'].filter(Boolean)
+const looksTemporary = tempDirs.some((dir) => PLUGIN_DIR.toLowerCase().startsWith(dir.toLowerCase()))
+const STABLE_CLONE_DIR = join(home, '.dsh', 'plugins', PACKAGE_NAME)
+
 const profileDir = join(home, '.dsh', 'profiles', profile)
 const nmDir = join(profileDir, 'node_modules')
 const linkPath = join(nmDir, PACKAGE_NAME)
@@ -110,9 +116,14 @@ function install() {
 
   console.log('')
   console.log('✅ 热安装完成 —— 无需重启 dsh web：')
-  console.log('   1. 宿主端已即时生效：对话里可直接用 outline_search / outline_get_document')
+  console.log('   1. 宿主端已即时生效：对话里可直接用 outline_search / outline_get_document / outline_count')
   console.log('   2. 浏览器刷新一次页面（或重开设置），设置 → 插件 → 插件配置 出现 Outline 知识库 卡片')
   console.log('   3. 在卡片里填 baseUrl 与 API Token 即可使用')
+  if (looksTemporary) {
+    console.log('')
+    console.log(`⚠️  插件当前位于临时目录（${PLUGIN_DIR}），删除该目录后插件将失效。`)
+    console.log(`   建议克隆到稳定位置后重新安装：git clone https://github.com/huangfuren/dsh-outline-auto.git ${STABLE_CLONE_DIR}`)
+  }
 }
 
 function uninstall() {

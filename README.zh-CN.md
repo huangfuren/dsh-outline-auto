@@ -36,17 +36,20 @@
 
 ## 安装
 
-**热安装（推荐，无需重启）：**
+### 默认方式：AI 协助热安装（无需重启）
+
+直接把 GitHub 链接发给你的 AI 助手，它两条命令就能帮你装好：
 
 ```bash
-git clone https://github.com/huangfuren/dsh-outline-auto.git
-cd dsh-outline-auto
-node scripts/hot-install.mjs          # 或：node scripts/hot-install.mjs --profile <profile>
+git clone https://github.com/huangfuren/dsh-outline-auto.git ~/.dsh/plugins/dsh-outline-auto
+node ~/.dsh/plugins/dsh-outline-auto/scripts/hot-install.mjs
 ```
 
-脚本会把插件链接进你的 profile，并向 `cordis.patch.yml` 追加 insert 行——DSH 热加载后**宿主端（工具）立即生效**，浏览器刷新一次页面即可看到设置卡片，**全程无需重启 `dsh web`**。卸载：`node scripts/hot-install.mjs --remove`。
+你也可以自己在终端执行。脚本会把插件链接进你的 profile，并向 `cordis.patch.yml` 追加 insert 行——DSH 热加载后**宿主端（工具）立即生效**，浏览器刷新一次页面即可看到设置卡片，**全程无需重启 `dsh web`**。卸载：`node ~/.dsh/plugins/dsh-outline-auto/scripts/hot-install.mjs --remove`。
 
-**传统安装（需要重启）：**
+> 插件从克隆位置建立链接——请放在稳定路径（如 `~/.dsh/plugins/dsh-outline-auto`）；脚本检测到临时目录时会提醒。
+
+### 传统安装（需要重启）
 
 ```bash
 dsh plugin --profile web add link:/path/to/dsh-outline-auto        # 开发（link 安装，实时源码）
@@ -72,8 +75,9 @@ dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.
 
 | 工具 | 说明 |
 | --- | --- |
-| `outline_search(query, limit?)` | 关键词搜索；每条返回标题、命中片段、文档 id 与链接（limit 最大 25）。 |
+| `outline_search(query, limit?)` | 关键词搜索；返回该关键词的**匹配总数**，以及每条命中的标题、片段、文档 id 与链接（limit 最大 25）。 |
 | `outline_get_document(id, maxLength?)` | 按 id 取文档完整 Markdown；`maxLength` 限制返回长度（默认 20000）。 |
+| `outline_count()` | 当前 API token 可访问的文档总数——回答"知识库有多少文档"类问题。 |
 
 ## 开发
 

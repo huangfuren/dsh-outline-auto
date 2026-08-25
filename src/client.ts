@@ -9,6 +9,12 @@ export interface OutlineSearchHit {
   updatedAt: string
 }
 
+/** 搜索结果：命中列表 + 该关键词在知识库中的匹配总数（pagination.total）。 */
+export interface OutlineSearchResult {
+  total: number
+  hits: OutlineSearchHit[]
+}
+
 export interface OutlineDocument {
   id: string
   title: string
@@ -59,7 +65,8 @@ export class OutlineClient {
     return `${this.baseUrl}${url.startsWith('/') ? url : '/' + url}`
   }
 
-  private async request<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  /** 请求并返回完整 JSON 响应体（data + pagination 等元数据）。 */
+  private async requestJson(path: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
     const url = `${this.baseUrl}${path}`
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), this.timeoutMs)
@@ -88,20 +95,27 @@ export class OutlineClient {
     }
     const bodyText = await response.text().catch(() => '')
     if (!response.ok) throwForStatus(response.status, bodyText)
-    let json: unknown
+    let json: Record<string, unknown>
     try {
-      json = JSON.parse(bodyText)
+      json = JSON.parse(bodyText) as Record<string, unknown>
     } catch {
       throw new OutlineApiError('invalid-response', 'Outline 返回了无法解析的响应。')
     }
-    const data = (json as { data?: unknown }).data
+    return json
+  }
+
+  private async request<T>(path: string, body: Record<string, unknown>): Promise<T> {
+    const json = await this.requestJson(path, body)
+    const data = json.data
     if (data === undefined) throw new OutlineApiError('invalid-response', 'Outline 响应缺少 data 字段。')
     return data as T
   }
 
-  async searchDocuments(query: string, limit: number): Promise<OutlineSearchHit[]> {
-    const data = await this.request<unknown[]>(`/api/documents.search`, { query, limit })
-    return data.map((item) => {
+  async searchDocuments(query: string, limit: number): Promise<OutlineSearchResult> {
+    const json = await this.requestJson(`/api/documents.search`, { query, limit })
+    const data = Array.isArray(json.data) ? json.data : []
+    const pagination = (json.pagination ?? {}) as { total?: unknown }
+    const hits: OutlineSearchHit[] = data.map((item) => {
       const record = (item ?? {}) as Record<string, unknown>
       const document = (record.document ?? {}) as Record<string, unknown>
       return {
@@ -113,6 +127,15 @@ export class OutlineClient {
         updatedAt: typeof document.updatedAt === 'string' ? document.updatedAt : '',
       }
     })
+    const total = typeof pagination.total === 'number' ? pagination.total : hits.length
+    return { total, hits }
+  }
+
+  /** 统计当前 token 可访问的文档总数（documents.list 的 pagination.total）。 */
+  async countDocuments(filters: Record<string, unknown> = {}): Promise<number> {
+    const json = await this.requestJson(`/api/documents.list`, { limit: 1, ...filters })
+    const pagination = (json.pagination ?? {}) as { total?: unknown }
+    return typeof pagination.total === 'number' ? pagination.total : 0
   }
 
   async getDocument(id: string): Promise<OutlineDocument> {

@@ -1,5 +1,5 @@
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { OutlineClient, OutlineSearchHit, OutlineDocument } from './client.js'
+import type { OutlineClient, OutlineSearchResult, OutlineDocument } from './client.js'
 
 export const SEARCH_MAX_LIMIT = 25
 export const DOCUMENT_DEFAULT_MAX_LENGTH = 20000
@@ -15,13 +15,17 @@ function wrapUrl(url: string): string {
   return /[\s()]/.test(url) ? `<${url}>` : url
 }
 
-function renderSearchResults(hits: OutlineSearchHit[]): string {
-  if (hits.length === 0) return '未找到匹配文档，可尝试更换关键词。'
+function renderSearchResults(result: OutlineSearchResult): string {
+  const { total, hits } = result
+  if (hits.length === 0) {
+    return total > 0 ? `该关键词共匹配 ${total} 篇文档，但未返回可展示的结果。` : '未找到匹配文档，可尝试更换关键词。'
+  }
+  const head = `找到 ${hits.length} 篇文档${total > hits.length ? `（关键词共匹配 ${total} 篇，显示前 ${hits.length} 篇）` : ''}：`
   const lines = hits.map((hit) => {
     const meta = hit.snippet.length > 0 ? ` — ${hit.snippet}` : ''
     return `- [${escapeLinkText(hit.title)}](${wrapUrl(hit.url)})${meta}（id: ${hit.id}）`
   })
-  return `找到 ${hits.length} 篇文档：\n${lines.join('\n')}\n\n如需查看某篇全文，请使用 outline_get_document 工具（参数 id）。`
+  return `${head}\n${lines.join('\n')}\n\n如需查看某篇全文，请使用 outline_get_document 工具（参数 id）。`
 }
 
 function renderDocument(doc: OutlineDocument, truncated: boolean): string {
@@ -32,24 +36,32 @@ function renderDocument(doc: OutlineDocument, truncated: boolean): string {
 export function outlineSearchTool(makeClient: () => OutlineClient, defaultLimit: number) {
   return defineTool({
     name: 'outline_search',
-    description: '在 Outline 知识库中按关键词搜索文档，返回标题、命中片段、文档 id 与链接。结果受当前 API token 的访问权限限制。',
+    description: '在 Outline 知识库中按关键词搜索文档，返回该关键词的匹配总数、标题、命中片段、文档 id 与链接。结果受当前 API token 的访问权限限制。',
     parameters: {
       query: { type: 'string', required: true, description: '搜索关键词' },
       limit: { type: 'integer', description: `返回结果条数（默认 ${defaultLimit}，最大 ${SEARCH_MAX_LIMIT}）` },
     },
     output: {
       schema: {
-        type: 'array',
-        items: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            id: { type: 'string', required: true },
-            title: { type: 'string', required: true },
-            url: { type: 'string', required: true },
-            snippet: { type: 'string', required: true },
-            collectionId: { type: 'string', required: true },
-            updatedAt: { type: 'string', required: true },
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          total: { type: 'integer', required: true, description: '该关键词在知识库中的匹配总数' },
+          hits: {
+            type: 'array',
+            required: true,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                id: { type: 'string', required: true },
+                title: { type: 'string', required: true },
+                url: { type: 'string', required: true },
+                snippet: { type: 'string', required: true },
+                collectionId: { type: 'string', required: true },
+                updatedAt: { type: 'string', required: true },
+              },
+            },
           },
         },
       },
@@ -59,6 +71,27 @@ export function outlineSearchTool(makeClient: () => OutlineClient, defaultLimit:
       const limit = Math.min(SEARCH_MAX_LIMIT, Math.max(1, args.limit ?? defaultLimit))
       const client = makeClient()
       return client.searchDocuments(args.query, limit)
+    },
+  })
+}
+
+export function outlineCountTool(makeClient: () => OutlineClient) {
+  return defineTool({
+    name: 'outline_count',
+    description: '统计当前 API token 可访问的 Outline 知识库文档总数。用于回答"知识库有多少文档 / 多大"等问题；若要检索具体文档请用 outline_search。',
+    parameters: {},
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          total: { type: 'integer', required: true, description: '当前可访问的文档总数' },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: `Outline 知识库当前可访问文档总数：${value.total} 篇。` }],
+    },
+    async execute() {
+      return { total: await makeClient().countDocuments() }
     },
   })
 }

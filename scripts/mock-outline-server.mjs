@@ -21,17 +21,24 @@ export function createMockOutlineServer() {
       if (req.url === '/api/documents.search') {
         const query = String(parsed.query ?? '').toLowerCase()
         const limit = Number(parsed.limit ?? 10)
-        const hits = DOCS
-          .filter((doc) => doc.title.toLowerCase().includes(query) || doc.text.toLowerCase().includes(query))
-          .slice(0, limit)
+        const matches = DOCS.filter((doc) => doc.title.toLowerCase().includes(query) || doc.text.toLowerCase().includes(query))
+        const hits = matches.slice(0, limit)
           .map((doc) => ({ context: doc.text.slice(0, 40), document: { id: doc.id, title: doc.title, url: doc.url, collectionId: doc.collectionId, updatedAt: doc.updatedAt } }))
-        send(200, { data: hits, pagination: {} })
+        send(200, { data: hits, pagination: { total: matches.length } })
         return
       }
       if (req.url === '/api/documents.info') {
         const doc = DOCS.find((d) => d.id === parsed.id)
         if (!doc) { send(404, { ok: false, error: 'not_found' }); return }
         send(200, { data: { id: doc.id, title: doc.title, url: doc.url, text: doc.text, updatedAt: doc.updatedAt } })
+        return
+      }
+      if (req.url === '/api/documents.list') {
+        const limit = Number(parsed.limit ?? 10)
+        send(200, {
+          data: DOCS.slice(0, limit).map((d) => ({ id: d.id, title: d.title, url: d.url, collectionId: d.collectionId, updatedAt: d.updatedAt })),
+          pagination: { total: DOCS.length },
+        })
         return
       }
       send(404, { ok: false, error: 'not_found' })

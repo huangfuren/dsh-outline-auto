@@ -42,18 +42,46 @@ describe('OutlineClient', () => {
         return { status: 200, body: SEARCH_BODY }
       }),
     })
-    const hits = await client.searchDocuments('部署', 5)
+    const { total, hits } = await client.searchDocuments('部署', 5)
     expect(hits).toHaveLength(1)
+    expect(total).toBe(1) // pagination 缺省时回退为命中数
     expect(hits[0]).toMatchObject({ id: 'doc-1', title: '部署规范', snippet: '部署规范相关片段' })
   })
 
-  it('searchDocuments 空结果返回空数组', async () => {
+  it('searchDocuments 空结果返回空 hits，total 为 0', async () => {
     const client = new OutlineClient({
       baseUrl: 'https://outline.example.com',
       apiToken: 'tok',
       fetchImpl: stubFetch(async () => ({ status: 200, body: { data: [] } })),
     })
-    expect(await client.searchDocuments('xyz', 10)).toEqual([])
+    expect(await client.searchDocuments('xyz', 10)).toEqual({ total: 0, hits: [] })
+  })
+
+  it('searchDocuments 从 pagination.total 返回关键词匹配总数', async () => {
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async () => ({
+        status: 200,
+        body: { ...SEARCH_BODY, pagination: { total: 20399 } },
+      })),
+    })
+    const { total, hits } = await client.searchDocuments('部署', 5)
+    expect(total).toBe(20399)
+    expect(hits).toHaveLength(1)
+  })
+
+  it('countDocuments 返回 documents.list 的文档总数', async () => {
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async (url, init) => {
+        expect(url).toBe('https://outline.example.com/api/documents.list')
+        expect(JSON.parse(String(init.body))).toEqual({ limit: 1 })
+        return { status: 200, body: { data: [{ id: 'd' }], pagination: { total: 20399 } } }
+      }),
+    })
+    expect(await client.countDocuments()).toBe(20399)
   })
 
   it('相对文档 url 被解析为可点击的绝对地址', async () => {
@@ -62,7 +90,8 @@ describe('OutlineClient', () => {
       apiToken: 'tok',
       fetchImpl: stubFetch(async () => ({ status: 200, body: SEARCH_BODY })),
     })
-    const [hit] = await client.searchDocuments('部署', 5)
+    const { hits } = await client.searchDocuments('部署', 5)
+    const [hit] = hits
     expect(hit.url).toBe('https://outline.example.com/doc/deploy')
 
     const infoClient = new OutlineClient({
@@ -90,7 +119,8 @@ describe('OutlineClient', () => {
         },
       })),
     })
-    const [hit] = await client.searchDocuments('部署', 5)
+    const { hits } = await client.searchDocuments('部署', 5)
+    const [hit] = hits
     expect(hit.url).toBe('https://outline.other.com/doc/x')
   })
 
@@ -110,7 +140,8 @@ describe('OutlineClient', () => {
         },
       })),
     })
-    const [hit] = await client.searchDocuments('部署', 5)
+    const { hits } = await client.searchDocuments('部署', 5)
+    const [hit] = hits
     expect(hit.snippet).toBe('TDD的本质：测试不是 验证代码，而是设计代码')
     expect(hit.title).toBe('部署规范')
   })
@@ -184,7 +215,7 @@ describe('OutlineClient', () => {
       apiToken: 'tok',
       fetchImpl: stubFetch(async () => ({ status: 200, body: { nope: 1 } })),
     })
-    await expect(client.searchDocuments('x', 1)).rejects.toMatchObject({ kind: 'invalid-response' })
+    await expect(client.getDocument('x')).rejects.toMatchObject({ kind: 'invalid-response' })
   })
 
   it('OutlineApiError 是 Error 实例', () => {

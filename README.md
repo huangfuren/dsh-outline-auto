@@ -36,17 +36,20 @@ A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getou
 
 ## Installation
 
-**Hot install (recommended — no restart):**
+### Default: AI-assisted hot install (no restart)
+
+Just give your AI assistant the GitHub link — it can install for you with two commands:
 
 ```bash
-git clone https://github.com/huangfuren/dsh-outline-auto.git
-cd dsh-outline-auto
-node scripts/hot-install.mjs          # or: node scripts/hot-install.mjs --profile <profile>
+git clone https://github.com/huangfuren/dsh-outline-auto.git ~/.dsh/plugins/dsh-outline-auto
+node ~/.dsh/plugins/dsh-outline-auto/scripts/hot-install.mjs
 ```
 
-The script links the plugin into your profile and appends an insert row to `cordis.patch.yml`, which DSH hot-reloads: the host half (tools) works **immediately**, and the settings card appears after a browser page refresh — **no `dsh web` restart needed**. Uninstall with `node scripts/hot-install.mjs --remove`.
+You can also run them yourself in a terminal. The script links the plugin into your profile and appends an insert row to `cordis.patch.yml`, which DSH hot-reloads: the host half (tools) works **immediately**, and the settings card appears after a browser page refresh — **no `dsh web` restart needed**. Uninstall: `node ~/.dsh/plugins/dsh-outline-auto/scripts/hot-install.mjs --remove`.
 
-**Traditional install (requires a restart):**
+> The plugin is linked from the clone location — keep it in a stable path (e.g. `~/.dsh/plugins/dsh-outline-auto`); the script warns if it detects a temporary directory.
+
+### Traditional install (requires a restart)
 
 ```bash
 dsh plugin --profile web add link:/path/to/dsh-outline-auto        # development, live source
@@ -72,8 +75,9 @@ Click **Save** — applies immediately. Alternatively, configure via environment
 
 | Tool | Description |
 | --- | --- |
-| `outline_search(query, limit?)` | Keyword search; returns title, snippet, document id and link per match (limit up to 25). |
+| `outline_search(query, limit?)` | Keyword search; returns the match **total**, plus title, snippet, document id and link per hit (limit up to 25). |
 | `outline_get_document(id, maxLength?)` | Fetch a document's full Markdown by id; `maxLength` caps the returned text (default 20000). |
+| `outline_count()` | Total number of documents the current API token can access — answers "how many documents are in the knowledge base". |
 
 ## Development
 

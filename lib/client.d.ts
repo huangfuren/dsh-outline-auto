@@ -6,6 +6,11 @@ export interface OutlineSearchHit {
     collectionId: string;
     updatedAt: string;
 }
+/** 搜索结果：命中列表 + 该关键词在知识库中的匹配总数（pagination.total）。 */
+export interface OutlineSearchResult {
+    total: number;
+    hits: OutlineSearchHit[];
+}
 export interface OutlineDocument {
     id: string;
     title: string;
@@ -32,7 +37,11 @@ export declare class OutlineClient {
     private static stripHtml;
     /** 把 Outline API 返回的相对文档路径（如 /doc/xxx）解析为可点击的绝对地址。 */
     private absolutize;
+    /** 请求并返回完整 JSON 响应体（data + pagination 等元数据）。 */
+    private requestJson;
     private request;
-    searchDocuments(query: string, limit: number): Promise<OutlineSearchHit[]>;
+    searchDocuments(query: string, limit: number): Promise<OutlineSearchResult>;
+    /** 统计当前 token 可访问的文档总数（documents.list 的 pagination.total）。 */
+    countDocuments(filters?: Record<string, unknown>): Promise<number>;
     getDocument(id: string): Promise<OutlineDocument>;
 }

@@ -24,10 +24,11 @@ let failures = 0
 const check = (label, ok, extra = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${label}${extra ? ' — ' + extra : ''}`); if (!ok) failures++ }
 
 try {
-  const hits = await byName.outline_search.execute({ query: '部署', limit: 3 }, exec)
-  check('outline_search 返回结果', Array.isArray(hits) && hits.length === 1 && hits[0].id === 'doc-1', JSON.stringify(hits))
+  const search = await byName.outline_search.execute({ query: '部署', limit: 3 }, exec)
+  check('outline_search 返回结果', Array.isArray(search.hits) && search.hits.length === 1 && search.hits[0].id === 'doc-1', JSON.stringify(search))
+  check('outline_search 匹配总数', search.total === 1)
   const empty = await byName.outline_search.execute({ query: '不存在的词', limit: 3 }, exec)
-  check('outline_search 空结果', Array.isArray(empty) && empty.length === 0)
+  check('outline_search 空结果', Array.isArray(empty.hits) && empty.hits.length === 0)
   const doc = await byName.outline_get_document.execute({ id: 'doc-1' }, exec)
   check('outline_get_document 全文', typeof doc.text === 'string' && doc.text.includes('# 部署规范'))
   const trunc = await byName.outline_get_document.execute({ id: 'doc-1', maxLength: 1000 }, exec)
@@ -35,6 +36,8 @@ try {
   let notFound = false
   try { await byName.outline_get_document.execute({ id: 'missing' }, exec) } catch (e) { notFound = e.kind === 'not-found' }
   check('outline_get_document 404', notFound)
+  const count = await byName.outline_count.execute({}, exec)
+  check('outline_count 文档总数', count.total === 3, JSON.stringify(count))
 } catch (error) {
   console.error('SMOKE ERROR:', error)
   failures++

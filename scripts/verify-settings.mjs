@@ -51,11 +51,14 @@ try {
   console.log('[2] settings.yaml 已落盘：\n' + doc.trim())
 
   const searchTool = tools.find((tool) => tool.name === 'outline_search')
-  if (!searchTool) throw new Error('outline_search 工具未注册')
+  const countTool = tools.find((tool) => tool.name === 'outline_count')
+  if (!searchTool || !countTool) throw new Error('outline_search / outline_count 工具未注册')
   const result = await searchTool.execute({ query: KEYWORD, limit: 3 }, {})
-  const hits = Array.isArray(result) ? result : [result]
-  console.log(`[3] outline_search("${KEYWORD}") 返回 ${hits.length} 条：`)
+  const hits = Array.isArray(result.hits) ? result.hits : []
+  console.log(`[3] outline_search("${KEYWORD}") 返回 ${hits.length} 条（匹配总数 ${result.total}）：`)
   for (const hit of hits.slice(0, 3)) console.log(`    - ${hit.title}  ${hit.url}`)
+  const counted = await countTool.execute({}, {})
+  console.log(`[4] outline_count 文档总数: ${counted.total}`)
   console.log('INTEGRATION PASS')
 } finally {
   try { await ctx.stop?.() } catch { /* ignore */ }
