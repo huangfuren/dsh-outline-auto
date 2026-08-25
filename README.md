@@ -21,28 +21,46 @@ node <dsh-checkout>/apps/cli/lib/bin.js plugin --profile web add <本目录绝�
 
 安装后需**重启 `dsh web`**（插件的 host 部分在启动时加载）。
 
-## 配置
+### 从压缩包分享给他人
 
-在 `~/.dsh/profiles/web/cordis.patch.yml` 中追加（用同样的 `id` 覆盖插件行的 config）：
+把 `dsh-outline-ai` 目录压成 zip 时**务必排除 `node_modules` 与 `.git`**（`node_modules` 里的 junction 指向打包者机器的路径，接收者机器上不存在；运行时 DSH 会自动解析 `@deepseek-ai/*`，接收者**无需**重建 junction 即可运行，junction 只在本地开发/构建时需要）。接收者流程：
 
-```yaml
-- insert:
-    - id: outline-ai
-      name: 'dsh-outline-ai'
-      config:
-        baseUrl: https://outline.你的公司域名.com
-```
+1. 解压 zip（目录名保持 `dsh-outline-ai`）
+2. 执行 `dsh plugin --profile web add <解压后目录绝对路径>`
+3. 重启 `dsh web`
+4. 打开 **设置 → 插件 → 插件配置 → Outline 知识库** 卡片，填自己公司的 baseUrl 与自己的 API Token，点保存
+5. 直接对话中搜索即可；无需改任何配置文件
 
-API token 二选一（**推荐环境变量**，避免密钥进 git）：
+**前置条件**：接收者的机器能访问公司 Outline 实例（内网/VPN），且有有效 API Token。压缩包里不包含任何人的 token。
+
+## 配置（推荐：GUI 设置卡片）
+
+插件自带**配置卡片**：安装并重启后，打开 **设置 → 插件 → 插件配置**，找到 **Outline 知识库** 卡片，填入两项后点保存（立即生效，无需重启）：
+
+| 字段 | 说明 |
+| --- | --- |
+| 服务地址 (baseUrl) | Outline 实例根地址，如 `https://outline.你的公司域名.com` |
+| API Token | Outline 设置 → API 密钥 中生成 |
+
+卡片数据写入 `$DSH_HOME/settings.yaml` 的 `outline-ai` 命名空间（不进 git）。**每个用户安装后各自在 GUI 里填自己的 token 即可，方便插件分发。**
+
+配置优先级：**GUI 卡片（settings.yaml）→ 环境变量 → 插件配置行**。未配置时插件正常加载，调用工具返回明确的中文配置错误提示，不影响 GUI 启动。
+
+### 备选配置方式
 
 ```sh
-# 方式一：环境变量（插件启动时读取）
+# 方式一：环境变量（进程启动时读取）
+OUTLINE_BASE_URL=https://outline.你的公司域名.com
 OUTLINE_API_TOKEN=xxx
-# 方式二：写入插件行 config
-#       apiToken: xxx
 ```
 
-未配置时插件**正常加载**，调用工具会返回明确的中文配置错误提示，不会影响 GUI 启动。
+```yaml
+# 方式二：插件配置行（~/.dsh/profiles/web/cordis.patch.yml）
+- id: outline-ai
+  config:
+    baseUrl: https://outline.你的公司域名.com
+    apiToken: xxx
+```
 
 ## 本地开发与验证（无真实实例时）
 
@@ -52,7 +70,14 @@ pnpm typecheck          # tsc 严格检查
 pnpm build              # 产出 lib/
 pnpm test               # vitest 单测（mock fetch：成功/空/401/403/404/429/网络/坏响应）
 node scripts/smoke.mjs  # 起本地 Mock Outline server，端到端冒烟（输出 SMOKE PASS）
+node scripts/verify-settings.mjs   # settings 命名空间 → settings.yaml → 真实搜索 全链路验证
 ```
+
+### 客户端（设置卡片）说明
+
+- `client.js` 是浏览器半区（单文件模块，无构建步骤），注册 `settings.plugin.item` 卡片，读写 `outline-ai` 命名空间。
+- 安装后需重启 GUI 才会加载客户端半区（客户端清单在启动时生成）。
+- 修改 `client.js` 后无需构建，重启 GUI 或客户端插件热更新即可生效。
 
 ### 关于 `@deepseek-ai/*` 依赖的解析
 
