@@ -86,6 +86,8 @@ Click **Save** — applies immediately. Alternatively, configure via environment
 | `outline_search(query, limit?)` | Keyword search; returns the match **total**, plus title, snippet, document id and link per hit (limit up to 25). |
 | `outline_get_document(id, maxLength?)` | Fetch a document's full Markdown by id; `maxLength` caps the returned text (default 20000). |
 | `outline_count()` | Total number of documents in the knowledge base (`documents.list` total, exact; excludes trashed/deleted — the true total may be slightly higher). |
+| `outline_list_collections()` | List visible collections (id, name, permission, document count) — used to locate the target collection. |
+| `outline_create(collectionId, title, text, publish?)` | **Write** — create a document in a collection (default published). **Every call requires user approval** in the GUI before it executes. |
 
 ## Development
 

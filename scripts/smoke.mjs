@@ -16,6 +16,7 @@ const tools = []
 const ctx = {
   tools: { register: (definition) => { tools.push(definition) } },
   inject: () => () => {},
+  on: () => () => {},
 }
 apply(ctx, { baseUrl, apiToken: 'test-token', timeoutMs: 5000, searchLimit: 5 })
 const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool]))
@@ -38,6 +39,12 @@ try {
   check('outline_get_document 404', notFound)
   const count = await byName.outline_count.execute({}, exec)
   check('outline_count 文档总数', count.total === 3, JSON.stringify(count))
+  const collections = await byName.outline_list_collections.execute({}, exec)
+  check('outline_list_collections 返回集合', Array.isArray(collections) && collections.length === 1 && collections[0].id === 'col-1', JSON.stringify(collections))
+  const created = await byName.outline_create.execute({ collectionId: 'col-1', title: '冒烟测试文档', text: '# 冒烟\n正文' }, exec)
+  check('outline_create 创建成功', created.published === true && String(created.id).startsWith('new-'), JSON.stringify(created))
+  const recheck = await byName.outline_count.execute({}, exec)
+  check('outline_count 创建后 +1', recheck.total === 4)
 } catch (error) {
   console.error('SMOKE ERROR:', error)
   failures++

@@ -1,2 +1,4 @@
 node_modules/
 *.log
+# 本地 Aegis 设计/基线文档，不进公开仓库
+docs/aegis/

@@ -23,6 +23,22 @@ export interface OutlineDocument {
   updatedAt: string
 }
 
+/** Outline 集合（collections.list 条目）。documentCount 部分实例可能不返回。 */
+export interface OutlineCollection {
+  id: string
+  name: string
+  permission: string
+  documentCount?: number
+}
+
+/** outline_create 返回：创建后的文档信息。 */
+export interface OutlineCreateResult {
+  id: string
+  url: string
+  title: string
+  published: boolean
+}
+
 export interface OutlineClientOptions {
   baseUrl: string
   apiToken: string
@@ -38,6 +54,8 @@ export class OutlineClient {
   /** getDocument 的短期缓存（key = 文档 id），避免会话内重复读取同一文档反复请求 API。 */
   private readonly docCache = new Map<string, { expires: number; doc: OutlineDocument }>()
   private static readonly DOC_CACHE_TTL_MS = 60_000
+  /** listCollections 的短期缓存，供审批钩子解析集合名。 */
+  private collectionsCache: { expires: number; collections: OutlineCollection[] } | null = null
 
   constructor(options: OutlineClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '')
@@ -136,6 +154,41 @@ export class OutlineClient {
     const json = await this.requestJson(`/api/documents.list`, { limit: 1, ...filters })
     const pagination = (json.pagination ?? {}) as { total?: unknown }
     return typeof pagination.total === 'number' ? pagination.total : 0
+  }
+
+  /** 列出当前 token 可见的集合（60s 缓存）。注：实例要求 collections.list 带查询串。 */
+  async listCollections(force = false): Promise<OutlineCollection[]> {
+    const cached = this.collectionsCache
+    if (!force && cached !== null && cached !== undefined && cached.expires > Date.now()) return cached.collections
+    const json = await this.requestJson(`/api/collections.list?limit=100`, {})
+    const data = Array.isArray(json.data) ? json.data : []
+    const collections = data.map((item) => {
+      const c = (item ?? {}) as Record<string, unknown>
+      return {
+        id: typeof c.id === 'string' ? c.id : '',
+        name: typeof c.name === 'string' ? c.name : '(未命名集合)',
+        permission: typeof c.permission === 'string' ? c.permission : '',
+        ...(typeof c.documentCount === 'number' ? { documentCount: c.documentCount } : {}),
+      }
+    })
+    this.collectionsCache = { expires: Date.now() + OutlineClient.DOC_CACHE_TTL_MS, collections }
+    return collections
+  }
+
+  /** 在指定集合创建文档（默认发布）。 */
+  async createDocument(input: { collectionId: string; title: string; text: string; publish?: boolean }): Promise<OutlineCreateResult> {
+    const data = await this.request<Record<string, unknown>>(`/api/documents.create`, {
+      collectionId: input.collectionId,
+      title: input.title,
+      text: input.text,
+      publish: input.publish ?? true,
+    })
+    return {
+      id: typeof data.id === 'string' ? data.id : '',
+      url: this.absolutize(typeof data.url === 'string' ? data.url : ''),
+      title: OutlineClient.stripHtml(typeof data.title === 'string' ? data.title : input.title),
+      published: typeof data.published === 'boolean' ? data.published : true,
+    }
   }
 
   async getDocument(id: string): Promise<OutlineDocument> {

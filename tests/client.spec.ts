@@ -223,4 +223,54 @@ describe('OutlineClient', () => {
     expect(err).toBeInstanceOf(Error)
     expect(err.message).toBe('boom')
   })
+
+  it('listCollections 映射集合字段', async () => {
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async () => ({
+        status: 200,
+        body: { data: [{ id: 'col-1', name: '测试集合', permission: 'read_write', documentCount: 42 }] },
+      })),
+    })
+    const collections = await client.listCollections()
+    expect(collections).toEqual([{ id: 'col-1', name: '测试集合', permission: 'read_write', documentCount: 42 }])
+  })
+
+  it('createDocument 默认 publish=true 且 URL 绝对化', async () => {
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async (url, init) => {
+        expect(url).toBe('https://outline.example.com/api/documents.create')
+        expect(JSON.parse(String(init.body))).toEqual({ collectionId: 'col-1', title: 'T', text: 'B', publish: true })
+        return { status: 200, body: { data: { id: 'd1', title: 'T', url: '/doc/d1', published: true } } }
+      }),
+    })
+    const doc = await client.createDocument({ collectionId: 'col-1', title: 'T', text: 'B' })
+    expect(doc).toMatchObject({ id: 'd1', url: 'https://outline.example.com/doc/d1', published: true })
+  })
+
+  it('createDocument 支持 publish=false 存草稿', async () => {
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async (_url, init) => {
+        expect(JSON.parse(String(init.body))).toMatchObject({ publish: false })
+        return { status: 200, body: { data: { id: 'd2', title: 'D', url: '/doc/d2', published: false } } }
+      }),
+    })
+    const doc = await client.createDocument({ collectionId: 'col-1', title: 'D', text: 'B', publish: false })
+    expect(doc.published).toBe(false)
+  })
+
+  it('createDocument 403 映射为 auth 错误', async () => {
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async () => ({ status: 403, body: { ok: false } })),
+    })
+    await expect(client.createDocument({ collectionId: 'c', title: 'T', text: 'B' }))
+      .rejects.toMatchObject({ kind: 'auth' })
+  })
 })

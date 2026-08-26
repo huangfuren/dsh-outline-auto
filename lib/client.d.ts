@@ -18,6 +18,20 @@ export interface OutlineDocument {
     text: string;
     updatedAt: string;
 }
+/** Outline 集合（collections.list 条目）。documentCount 部分实例可能不返回。 */
+export interface OutlineCollection {
+    id: string;
+    name: string;
+    permission: string;
+    documentCount?: number;
+}
+/** outline_create 返回：创建后的文档信息。 */
+export interface OutlineCreateResult {
+    id: string;
+    url: string;
+    title: string;
+    published: boolean;
+}
 export interface OutlineClientOptions {
     baseUrl: string;
     apiToken: string;
@@ -32,6 +46,8 @@ export declare class OutlineClient {
     /** getDocument 的短期缓存（key = 文档 id），避免会话内重复读取同一文档反复请求 API。 */
     private readonly docCache;
     private static readonly DOC_CACHE_TTL_MS;
+    /** listCollections 的短期缓存，供审批钩子解析集合名。 */
+    private collectionsCache;
     constructor(options: OutlineClientOptions);
     /** 去掉 Outline 片段/标题里的 HTML 标签（如 <b>），避免原样渲染进聊天。 */
     private static stripHtml;
@@ -43,5 +59,14 @@ export declare class OutlineClient {
     searchDocuments(query: string, limit: number): Promise<OutlineSearchResult>;
     /** 统计 Outline 知识库文档总数（documents.list 分页 total；不含已删除/回收站文档）。 */
     countDocuments(filters?: Record<string, unknown>): Promise<number>;
+    /** 列出当前 token 可见的集合（60s 缓存）。注：实例要求 collections.list 带查询串。 */
+    listCollections(force?: boolean): Promise<OutlineCollection[]>;
+    /** 在指定集合创建文档（默认发布）。 */
+    createDocument(input: {
+        collectionId: string;
+        title: string;
+        text: string;
+        publish?: boolean;
+    }): Promise<OutlineCreateResult>;
     getDocument(id: string): Promise<OutlineDocument>;
 }

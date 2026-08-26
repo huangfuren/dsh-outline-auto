@@ -41,6 +41,23 @@ export function createMockOutlineServer() {
         })
         return
       }
+      if (req.url.startsWith('/api/collections.list')) {
+        send(200, {
+          data: [
+            { id: 'col-1', name: '测试集合', permission: 'read_write', documentCount: DOCS.length },
+          ],
+          pagination: { total: 1 },
+        })
+        return
+      }
+      if (req.url === '/api/documents.create') {
+        const { collectionId, title, text, publish } = parsed
+        if (!collectionId || !title || !text) { send(400, { ok: false, error: 'validation_error', message: 'title/collectionId/text required' }); return }
+        const doc = { id: 'new-' + DOCS.length, title, url: '/doc/new', collectionId, updatedAt: '2026-08-25T00:00:00Z', text }
+        DOCS.push(doc)
+        send(200, { data: { id: doc.id, title: doc.title, url: doc.url, published: publish !== false } })
+        return
+      }
       send(404, { ok: false, error: 'not_found' })
     })
   })

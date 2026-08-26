@@ -1,5 +1,5 @@
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { OutlineClient, OutlineSearchResult, OutlineDocument } from './client.js'
+import type { OutlineClient, OutlineSearchResult, OutlineDocument, OutlineCollection, OutlineCreateResult } from './client.js'
 
 export const SEARCH_MAX_LIMIT = 25
 export const DOCUMENT_DEFAULT_MAX_LENGTH = 20000
@@ -124,6 +124,84 @@ export function outlineGetDocumentTool(makeClient: () => OutlineClient) {
       const doc = await makeClient().getDocument(args.id)
       const truncated = doc.text.length > maxLength
       return { ...doc, text: truncated ? doc.text.slice(0, maxLength) : doc.text, truncated }
+    },
+  })
+}
+
+/** 审批提示文案：集合名 + 标题 + 内容预览（前 100 字，纯函数可单测）。 */
+export function buildCreateApprovalReason(args: { collectionId?: string; title?: string; text?: string }, collectionName?: string): string {
+  const name = collectionName && collectionName !== '' ? collectionName : (args.collectionId ?? '未知集合')
+  const preview = (args.text ?? '').replace(/\s+/g, ' ').slice(0, 100)
+  return `创建 Outline 文档：集合「${name}」/ 标题「${args.title ?? '(无标题)'}」\n内容预览：${preview}${(args.text ?? '').length > 100 ? '…' : ''}`
+}
+
+export function outlineListCollectionsTool(makeClient: () => OutlineClient) {
+  return defineTool({
+    name: 'outline_list_collections',
+    description: '列出当前 token 可见的 Outline 集合（id、名称、权限、文档数），用于确定 outline_create 的目标集合。',
+    parameters: {},
+    output: {
+      schema: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            id: { type: 'string', required: true },
+            name: { type: 'string', required: true },
+            permission: { type: 'string', required: true },
+            documentCount: { type: 'integer', description: '文档数（部分实例可能不返回）' },
+          },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: value.length === 0
+          ? '当前 token 没有可见集合。'
+          : `可见集合（${value.length} 个）：\n` + value.map((c) => `- ${c.name}（${c.id}，${c.permission}${typeof c.documentCount === 'number' ? `，文档 ${c.documentCount} 篇` : ''}）`).join('\n'),
+      }],
+    },
+    async execute() {
+      return makeClient().listCollections()
+    },
+  })
+}
+
+export function outlineCreateTool(makeClient: () => OutlineClient) {
+  return defineTool({
+    name: 'outline_create',
+    description: '在指定 Outline 集合创建文档（写操作，每次执行前需用户审批）。创建后返回文档链接。请先用 outline_list_collections 确认目标集合 id。',
+    parameters: {
+      collectionId: { type: 'string', required: true, description: '目标集合 id（用 outline_list_collections 获取）' },
+      title: { type: 'string', required: true, description: '文档标题' },
+      text: { type: 'string', required: true, description: 'Markdown 正文' },
+      publish: { type: 'boolean', description: '默认 true（创建即发布）；false = 存草稿（仅作者可见）' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          id: { type: 'string', required: true },
+          url: { type: 'string', required: true },
+          title: { type: 'string', required: true },
+          published: { type: 'boolean', required: true },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: value.published
+          ? `✅ 已创建并发布文档：${escapeLinkText(value.title)} → ${wrapUrl(value.url)}`
+          : `📝 已创建草稿（未发布）：${escapeLinkText(value.title)} → ${wrapUrl(value.url)}`,
+      }],
+    },
+    async execute(args) {
+      return makeClient().createDocument({
+        collectionId: args.collectionId,
+        title: args.title,
+        text: args.text,
+        publish: args.publish,
+      })
     },
   })
 }

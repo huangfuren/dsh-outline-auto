@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { outlineSearchTool, outlineGetDocumentTool, outlineCountTool } from '../src/tools.js'
+import { outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool, outlineCreateTool, buildCreateApprovalReason } from '../src/tools.js'
 import { OutlineApiError } from '../src/errors.js'
 import type { OutlineClient } from '../src/client.js'
 
@@ -59,6 +59,38 @@ describe('outline_count', () => {
     const tool = outlineCountTool(() => fakeClient())
     const result = await tool.execute({} as never, exec) as any
     expect(result.total).toBe(42)
+  })
+})
+
+describe('outline_list_collections', () => {
+  it('execute 返回集合列表', async () => {
+    const tool = outlineListCollectionsTool(() => fakeClient({ listCollections: async () => [{ id: 'col-1', name: '测试集合', permission: 'read_write', documentCount: 42 }] }))
+    const result = await tool.execute({} as never, exec) as any
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('col-1')
+  })
+})
+
+describe('outline_create', () => {
+  it('execute 传入参数并返回结果', async () => {
+    let seen: any
+    const tool = outlineCreateTool(() => fakeClient({ createDocument: async (input) => { seen = input; return { id: 'd1', url: 'https://outline.example.com/doc/d1', title: input.title, published: true } } }))
+    const result = await tool.execute({ collectionId: 'col-1', title: 'T', text: 'B' }, exec) as any
+    expect(seen).toEqual({ collectionId: 'col-1', title: 'T', text: 'B', publish: undefined })
+    expect(result.url).toContain('doc/d1')
+  })
+})
+
+describe('buildCreateApprovalReason', () => {
+  it('包含集合名、标题与内容预览', () => {
+    const reason = buildCreateApprovalReason({ collectionId: 'col-1', title: '测试文档', text: '第一行内容，用于预览。' + '长'.repeat(200) }, '运维集合')
+    expect(reason).toContain('运维集合')
+    expect(reason).toContain('测试文档')
+    expect(reason).toContain('…')
+    expect(reason.length).toBeLessThan(300)
+  })
+  it('集合名缺失时回退 collectionId', () => {
+    expect(buildCreateApprovalReason({ collectionId: 'col-9', title: 'T' })).toContain('col-9')
   })
 })
 
