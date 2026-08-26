@@ -7,7 +7,7 @@ import { OutlineClient } from './client.js'
 import {
   outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool,
   outlineResolvePathTool, outlineCreateTool, outlineUpdateDocumentTool, outlineDeleteTool,
-  outlineListChildrenTool, buildCreateApprovalReason, resolveWriteGuard, FORBIDDEN_WRITE_COLLECTIONS,
+  outlineListChildrenTool, outlineDocTemplateTool, buildCreateApprovalReason, resolveWriteGuard, FORBIDDEN_WRITE_COLLECTIONS,
 } from './tools.js'
 import type { OutlineCollection } from './client.js'
 
@@ -58,6 +58,7 @@ export function apply(ctx: Context, config: Config = {} as Config) {
   ctx.tools.register(outlineListCollectionsTool(makeClient))
   ctx.tools.register(outlineResolvePathTool(makeClient))
   ctx.tools.register(outlineListChildrenTool(makeClient))
+  ctx.tools.register(outlineDocTemplateTool())
   ctx.tools.register(outlineCreateTool(makeClient, getProtected))
   ctx.tools.register(outlineUpdateDocumentTool(makeClient, getProtected))
   ctx.tools.register(outlineDeleteTool(makeClient, getProtected, async (reason, exec) => {

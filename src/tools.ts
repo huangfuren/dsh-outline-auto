@@ -158,6 +158,61 @@ export interface WriteGuards {
   protectedCollections: () => string[]
 }
 
+/** 团队标准需求文档模板（Markdown），供 AI 撰写需求文档时参考格式。 */
+export const REQUIREMENT_DOC_TEMPLATE = [
+  '# <标题>-需求文档',
+  '',
+  '【目标】：',
+  '1、<本次交付的核心目标>',
+  '2、<次要目标>',
+  '',
+  '【交付物】：',
+  '1、<交付物 1>',
+  '2、<交付物 2>',
+  '',
+  '【交付标准】：<可验收的标准，如功能可用、文档可复现、指标达标>',
+  '',
+  '【交付时间】：<具体时间，如 今日 14:30 前 / YYYY-MM-DD>',
+  '',
+  '【工作思路】：',
+  '1. <第一步>',
+  '2. <第二步>',
+  '3. <第三步>',
+  '',
+  '【潜在风险点】：<可能卡住的点，如依赖外部、数据迁移耗时>',
+  '',
+  '### 当前状态：待交付',
+  '',
+].join('\n')
+
+/** 模板的章节清单（供 AI 核对是否写全）。 */
+export const REQUIREMENT_DOC_SECTIONS = ['目标', '交付物', '交付标准', '交付时间', '工作思路', '潜在风险点', '当前状态']
+
+export function outlineDocTemplateTool() {
+  return defineTool({
+    name: 'outline_doc_template',
+    description: '返回团队标准的需求文档模板（Markdown）与章节清单。撰写/更新需求文档前先调用本工具获取模板，保证格式一致。',
+    parameters: {},
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          template: { type: 'string', required: true, description: '需求文档标准模板（Markdown）' },
+          sections: { type: 'array', required: true, items: { type: 'string' }, description: '必须包含的章节清单' },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `需求文档标准模板（章节：${value.sections.join(' / ')}）：\n\n${value.template}`,
+      }],
+    },
+    async execute() {
+      return { template: REQUIREMENT_DOC_TEMPLATE, sections: [...REQUIREMENT_DOC_SECTIONS] }
+    },
+  })
+}
+
 /**
  * 写入守卫：按集合名判断是否允许写入（创建/更新/删除）。
  * @returns 禁止时返回错误提示文案；允许时返回 null。

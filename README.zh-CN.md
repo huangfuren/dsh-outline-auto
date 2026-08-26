@@ -89,11 +89,19 @@ dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.
 | `outline_list_collections()` | 列出可见集合（id、名称、权限、文档数）。 |
 | `outline_resolve_path(path)` | 把人话路径（如 `运维文档/个人笔记/随手记黄继晨`）解析为 `collectionId` + `parentDocumentId`，返回解析出的完整路径。 |
 | `outline_list_children(parentId)` | 列出某目录（父文档）下的直接子文档。 |
+| `outline_doc_template()` | 返回团队标准需求文档模板（Markdown）+ 必备章节清单——写需求文档前先调用，保证格式一致。 |
 | `outline_create(collectionId, title, text, publish?, parentDocumentId?)` | **写操作**——创建文档（默认发布；`parentDocumentId` 可嵌套到目录）。**审批展示解析出的完整路径**。 |
 | `outline_update_document(id, title?, text?)` | **写操作**——更新已有文档的标题/正文。**审批展示文档路径**。 |
 | `outline_delete(id)` | **写操作，不可恢复**——删除文档。**双重审批**：先弹一次确认，执行删除前再确认一次。 |
 
 > 受保护集合（设置卡片可配置，逗号分隔，默认 `内部集合`）**禁止任何写入**。
+
+### 工作流：撰写需求文档（高频操作）
+
+1. `outline_resolve_path("运维文档/个人笔记/随手记黄继晨")` — 定位目标目录（得到 `collectionId` + `parentDocumentId`）
+2. `outline_doc_template()` — 获取标准需求文档模板与必备章节
+3. 按模板起草内容 → `outline_create(collectionId, parentDocumentId, title, text)` — 审批弹窗展示解析后的完整路径，确认后创建
+4. 用返回的链接校验位置
 
 ## 开发
 

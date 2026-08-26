@@ -89,11 +89,19 @@ Click **Save** — applies immediately. Alternatively, configure via environment
 | `outline_list_collections()` | List visible collections (id, name, permission, document count). |
 | `outline_resolve_path(path)` | Resolve a human path like `运维文档/个人笔记/随手记黄继晨` into `collectionId` + `parentDocumentId`; returns the resolved full path. |
 | `outline_list_children(parentId)` | List direct child documents of a directory (parent document). |
+| `outline_doc_template()` | Return the standard requirement-document template (Markdown) + required section list — call it before writing a requirement doc. |
 | `outline_create(collectionId, title, text, publish?, parentDocumentId?)` | **Write** — create a document (default published; nest under a directory via `parentDocumentId`). **Requires approval** showing the resolved full path. |
 | `outline_update_document(id, title?, text?)` | **Write** — update a document's title/body. **Requires approval** showing the document path. |
 | `outline_delete(id)` | **Write, irreversible** — delete a document. **Double approval**: a first prompt, then a second confirmation before deletion. |
 
 > Writes are refused in **protected collections** (configurable in the settings card, comma-separated; default `内部集合`).
+
+### Workflow: writing a requirement document (common task)
+
+1. `outline_resolve_path("运维文档/个人笔记/随手记黄继晨")` — locate the target directory (`collectionId` + `parentDocumentId`).
+2. `outline_doc_template()` — fetch the standard template and required sections.
+3. Draft the content per the template, then `outline_create(collectionId, parentDocumentId, title, text)` — the approval prompt shows the resolved full path; confirm to create.
+4. Verify via the returned link.
 
 ## Development
 

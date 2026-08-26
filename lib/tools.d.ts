@@ -17,6 +17,11 @@ export declare const FORBIDDEN_WRITE_COLLECTIONS: readonly string[];
 export interface WriteGuards {
     protectedCollections: () => string[];
 }
+/** 团队标准需求文档模板（Markdown），供 AI 撰写需求文档时参考格式。 */
+export declare const REQUIREMENT_DOC_TEMPLATE: string;
+/** 模板的章节清单（供 AI 核对是否写全）。 */
+export declare const REQUIREMENT_DOC_SECTIONS: string[];
+export declare function outlineDocTemplateTool(): import("@deepseek-ai/dsh-tools").ToolDefinition;
 /**
  * 写入守卫：按集合名判断是否允许写入（创建/更新/删除）。
  * @returns 禁止时返回错误提示文案；允许时返回 null。

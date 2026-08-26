@@ -56,6 +56,8 @@ try {
   check('outline_list_children 返回子文档', Array.isArray(children), JSON.stringify(children))
   const filtered = await byName.outline_search.execute({ query: '部署', limit: 3, collectionId: 'col-1' }, exec)
   check('outline_search collectionId 过滤', filtered.total >= 1, JSON.stringify(filtered))
+  const tpl = await byName.outline_doc_template.execute({}, exec)
+  check('outline_doc_template 返回模板', typeof tpl.template === 'string' && tpl.template.includes('【目标】') && Array.isArray(tpl.sections), JSON.stringify(tpl.sections))
 } catch (error) {
   console.error('SMOKE ERROR:', error)
   failures++

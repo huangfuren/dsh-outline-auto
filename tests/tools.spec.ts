@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool, outlineResolvePathTool, outlineCreateTool, outlineUpdateDocumentTool, outlineDeleteTool, outlineListChildrenTool, buildCreateApprovalReason, resolveWriteGuard } from '../src/tools.js'
+import { outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool, outlineResolvePathTool, outlineCreateTool, outlineUpdateDocumentTool, outlineDeleteTool, outlineListChildrenTool, outlineDocTemplateTool, buildCreateApprovalReason, resolveWriteGuard } from '../src/tools.js'
 import { OutlineApiError } from '../src/errors.js'
 import type { OutlineClient } from '../src/client.js'
 
@@ -186,6 +186,18 @@ describe('outline_delete', () => {
       resolveDocumentPath: async () => ['测试集合', 'T'],
     }), () => ['内部集合'], async () => false)
     await expect(tool.execute({ id: 'd1' }, exec)).rejects.toThrow('取消')
+  })
+})
+
+describe('outline_doc_template', () => {
+  it('返回需求文档模板且包含全部章节', async () => {
+    const tool = outlineDocTemplateTool()
+    const r = await tool.execute({} as never, exec) as any
+    for (const s of ['【目标】', '【交付物】', '【交付标准】', '【交付时间】', '【工作思路】', '【潜在风险点】', '当前状态']) {
+      expect(r.template).toContain(s)
+    }
+    expect(r.sections).toContain('目标')
+    expect(r.sections).toContain('潜在风险点')
   })
 })
 
