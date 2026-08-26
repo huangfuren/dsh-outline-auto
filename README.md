@@ -49,6 +49,14 @@ You can also run them yourself in a terminal. The script links the plugin into y
 
 > The plugin is linked from the clone location — keep it in a stable path (e.g. `~/.dsh/plugins/dsh-outline-auto`); the script warns if it detects a temporary directory.
 
+**Updating an existing install** — give the GitHub link to your AI assistant (or run it yourself):
+
+```bash
+node ~/.dsh/plugins/dsh-outline-auto/scripts/hot-install.mjs --update   # git pull + guidance
+```
+
+After the pull, the **settings card updates on a browser page refresh**; the **tools (host half) require a `dsh web` restart** — DSH does not yet hot-reload host plugin code (module-level HMR is disabled in the web composition).
+
 ### Traditional install (requires a restart)
 
 ```bash

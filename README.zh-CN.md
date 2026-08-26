@@ -49,6 +49,14 @@ node ~/.dsh/plugins/dsh-outline-auto/scripts/hot-install.mjs
 
 > 插件从克隆位置建立链接——请放在稳定路径（如 `~/.dsh/plugins/dsh-outline-auto`）；脚本检测到临时目录时会提醒。
 
+**更新已安装的插件**——把 GitHub 链接发给你的 AI 助手（或自己执行）：
+
+```bash
+node ~/.dsh/plugins/dsh-outline-auto/scripts/hot-install.mjs --update   # git pull + 生效说明
+```
+
+拉取后：**设置卡片刷新页面即更新**；**工具（宿主端）需重启 `dsh web`** 才能加载新代码（DSH 当前未启用模块级热更新）。
+
 ### 传统安装（需要重启）
 
 ```bash

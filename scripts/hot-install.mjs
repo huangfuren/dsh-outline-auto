@@ -6,10 +6,12 @@
 // loader 树，浏览器刷新一次页面后设置卡片即出现。
 //
 // 用法（在插件目录内执行）：
-//   node scripts/hot-install.mjs            # 热安装到 web profile
+//   node scripts/hot-install.mjs            # 热安装到 web profile（无需重启）
 //   node scripts/hot-install.mjs --profile headless
+//   node scripts/hot-install.mjs --update    # 更新已安装的插件（git pull + 生效说明）
 //   node scripts/hot-install.mjs --remove    # 热卸载
 import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -21,9 +23,11 @@ const ROW_ID = 'outline-auto'
 const INSERT_BLOCK = `- insert:\n    - id: ${ROW_ID}\n      name: '${PACKAGE_NAME}'\n`
 
 const args = process.argv.slice(2)
-const profileArg = args.find((a) => a.startsWith('--profile=')) ?? args[args.indexOf('--profile') + 1]
+const profileIdx = args.indexOf('--profile')
+const profileArg = args.find((a) => a.startsWith('--profile=')) ?? (profileIdx >= 0 ? args[profileIdx + 1] : undefined)
 const profile = profileArg ?? 'web'
 const remove = args.includes('--remove')
+const update = args.includes('--update')
 
 const home = process.env.USERPROFILE ?? process.env.HOME
 if (!home) {
@@ -45,15 +49,11 @@ const patchPath = join(profileDir, 'cordis.patch.yml')
 function removeLink(path) {
   if (!existsSync(path)) return false
   if (process.platform === 'win32') {
-    const { execFileSync } = awaitImport('node:child_process')
     execFileSync('cmd', ['/c', 'rmdir', path], { stdio: 'ignore' })
   } else {
     rmSync(path, { recursive: true, force: true })
   }
   return true
-}
-function awaitImport(spec) {
-  return import(spec)
 }
 
 function readPatch() {
@@ -151,9 +151,33 @@ function uninstall() {
   console.log('✅ 热卸载完成：宿主端已停止注册工具；刷新页面后卡片消失。')
 }
 
+/** 更新已安装的插件：git pull 拉新代码，并说明各半区的生效方式。 */
+function updatePlugin() {
+  const gitDir = join(PLUGIN_DIR, '.git')
+  if (!existsSync(gitDir)) {
+    console.error(`插件目录 ${PLUGIN_DIR} 不是 git clone（无 .git），无法 git pull。`)
+    console.error('请手动替换插件文件，或删除后重新 clone 安装。')
+    return
+  }
+  const dirty = execFileSync('git', ['-C', PLUGIN_DIR, 'status', '--porcelain'], { encoding: 'utf8' }).trim()
+  if (dirty) {
+    console.error('插件目录有未提交的本地改动，先处理再更新：\n' + dirty)
+    process.exit(1)
+  }
+  console.log(`[更新] ${PACKAGE_NAME} @ ${PLUGIN_DIR}`)
+  execFileSync('git', ['-C', PLUGIN_DIR, 'pull', '--ff-only'], { stdio: 'inherit' })
+  console.log('')
+  console.log('✅ 代码已更新到最新。生效方式：')
+  console.log('   1. 客户端（设置卡片）：刷新浏览器页面即可看到新版本')
+  console.log('   2. 宿主端（工具逻辑）：需重启 dsh web 加载新代码（DSH 当前未启用模块级热更新）')
+}
+
 if (remove) {
   console.log(`dsh-outline-auto 热卸载 → profile: ${profile}`)
   uninstall()
+} else if (update) {
+  console.log(`dsh-outline-auto 更新 → profile: ${profile}`)
+  updatePlugin()
 } else {
   console.log(`dsh-outline-auto 热安装 → profile: ${profile}`)
   install()
