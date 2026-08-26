@@ -36,7 +36,7 @@ function renderDocument(doc: OutlineDocument, truncated: boolean): string {
 export function outlineSearchTool(makeClient: () => OutlineClient, defaultLimit: number) {
   return defineTool({
     name: 'outline_search',
-    description: '在 Outline 知识库中按关键词搜索文档，返回该关键词的匹配总数、标题、命中片段、文档 id 与链接。结果受当前 API token 的访问权限限制。',
+    description: '在 Outline 知识库中按关键词搜索文档，返回该关键词的匹配总数、标题、命中片段、文档 id 与链接。配置好 token 后即可检索全部文档。',
     parameters: {
       query: { type: 'string', required: true, description: '搜索关键词' },
       limit: { type: 'integer', description: `返回结果条数（默认 ${defaultLimit}，最大 ${SEARCH_MAX_LIMIT}）` },
@@ -78,14 +78,14 @@ export function outlineSearchTool(makeClient: () => OutlineClient, defaultLimit:
 export function outlineCountTool(makeClient: () => OutlineClient) {
   return defineTool({
     name: 'outline_count',
-    description: '统计当前 API token 可访问的 Outline 知识库文档总数。用于回答"知识库有多少文档 / 多大"等问题；若要检索具体文档请用 outline_search。',
+    description: '统计 Outline 知识库文档总数（documents.list 分页 total，精确值；不含已删除/回收站文档，若计入则实际总数可能略多）。用于回答"知识库有多少文档 / 多大"等问题；若要检索具体文档请用 outline_search。',
     parameters: {},
     output: {
       schema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          total: { type: 'integer', required: true, description: '当前可访问的文档总数' },
+          total: { type: 'integer', required: true, description: 'Outline 知识库文档总数（不含已删除/回收站文档）' },
         },
       },
       render: (_args, value) => [{ type: 'text', text: `Outline 知识库当前可访问文档总数：${value.total} 篇。` }],

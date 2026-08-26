@@ -41,7 +41,7 @@ export declare class OutlineClient {
     private requestJson;
     private request;
     searchDocuments(query: string, limit: number): Promise<OutlineSearchResult>;
-    /** 统计当前 token 可访问的文档总数（documents.list 的 pagination.total）。 */
+    /** 统计 Outline 知识库文档总数（documents.list 分页 total；不含已删除/回收站文档）。 */
     countDocuments(filters?: Record<string, unknown>): Promise<number>;
     getDocument(id: string): Promise<OutlineDocument>;
 }

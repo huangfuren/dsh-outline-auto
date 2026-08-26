@@ -85,7 +85,7 @@ dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.
 | --- | --- |
 | `outline_search(query, limit?)` | 关键词搜索；返回该关键词的**匹配总数**，以及每条命中的标题、片段、文档 id 与链接（limit 最大 25）。 |
 | `outline_get_document(id, maxLength?)` | 按 id 取文档完整 Markdown；`maxLength` 限制返回长度（默认 20000）。 |
-| `outline_count()` | 当前 API token 可访问的文档总数——回答"知识库有多少文档"类问题。 |
+| `outline_count()` | Outline 知识库文档总数（`documents.list` 分页 total，精确值；不含已删除/回收站文档，实际总数可能略多）。 |
 
 ## 开发
 

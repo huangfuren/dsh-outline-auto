@@ -131,7 +131,7 @@ export class OutlineClient {
     return { total, hits }
   }
 
-  /** 统计当前 token 可访问的文档总数（documents.list 的 pagination.total）。 */
+  /** 统计 Outline 知识库文档总数（documents.list 分页 total；不含已删除/回收站文档）。 */
   async countDocuments(filters: Record<string, unknown> = {}): Promise<number> {
     const json = await this.requestJson(`/api/documents.list`, { limit: 1, ...filters })
     const pagination = (json.pagination ?? {}) as { total?: unknown }
