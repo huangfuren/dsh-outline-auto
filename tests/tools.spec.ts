@@ -200,6 +200,15 @@ describe('outline_doc_template', () => {
     expect(r.sections).toContain('潜在风险点')
     expect(r.sections).toContain('备注')
   })
+
+  it('条目类章节示范一点一行、逐条编号的排版（防挤成一段）', async () => {
+    const tool = outlineDocTemplateTool()
+    const r = await tool.execute({} as never, exec) as any
+    // 【交付物】 下必须出现逐条编号的行（1、<交付物 1> 换行 2、…）
+    expect(r.template).toMatch(/【交付物】[^\n]*\n1、<交付物 1>\n2、<交付物 2>\n3、<交付物 3>/)
+    expect(r.template).toMatch(/【工作思路】[^\n]*\n1\. <第一步>\n2\. <第二步>\n3\. <第三步>/)
+    expect(r.template).toMatch(/【潜在风险点】[^\n]*\n1、<风险 1>\n2、<风险 2>/)
+  })
 })
 
 describe('输出 schema 完整性（回归：parentDocumentId 等字段必须声明，避免被 additionalProperties:false 剥离）', () => {
