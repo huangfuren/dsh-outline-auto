@@ -98,10 +98,7 @@ Click **Save** — applies immediately. Alternatively, configure via environment
 
 ### Workflow: writing a requirement document (common task)
 
-1. `outline_resolve_path("运维文档/目录A/子目录")` — locate the target directory (`collectionId` + `parentDocumentId`).
-2. `outline_doc_template()` — fetch the standard template and required sections (aligned with the collection's pinned docs).
-3. Draft the content per the template, then `outline_create(collectionId, parentDocumentId, title, text)` — the approval prompt shows the resolved full path; confirm to create.
-4. Verify via the returned link.
+See the full SOP: [`docs/workflow-requirement-doc.zh.md`](docs/workflow-requirement-doc.zh.md) — locate the directory (`outline_resolve_path`) → fetch the template (`outline_doc_template`) → draft → create with approval → verify.
 
 ## Development
 
@@ -110,7 +107,7 @@ pnpm typecheck          # strict tsc check
 pnpm build              # emit lib/
 pnpm test               # vitest unit tests (mock fetch: success/empty/401/403/404/429/network/bad response)
 node scripts/smoke.mjs  # local Mock Outline server, end-to-end smoke (prints SMOKE PASS)
-node scripts/verify-settings.mjs  # settings namespace → settings.yaml → real search, full-chain check
+node scripts/verify.mjs                # real settings → search → count chain (add --create for the create+cleanup chain)
 ```
 
 The client half (`client.js`) is a dependency-free single-file module — no build step. The real-search verification script requires `OUTLINE_BASE_URL` / `OUTLINE_API_TOKEN` env vars.

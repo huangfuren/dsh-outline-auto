@@ -98,10 +98,7 @@ dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.
 
 ### 工作流：撰写需求文档（高频操作）
 
-1. `outline_resolve_path("运维文档/目录A/子目录")` — 定位目标目录（得到 `collectionId` + `parentDocumentId`）
-2. `outline_doc_template()` — 获取标准需求文档模板与必备章节（与集合置顶文档对齐）
-3. 按模板起草内容 → `outline_create(collectionId, parentDocumentId, title, text)` — 审批弹窗展示解析后的完整路径，确认后创建
-4. 用返回的链接校验位置
+完整 SOP 见：[`docs/workflow-requirement-doc.zh.md`](docs/workflow-requirement-doc.zh.md) —— 定位目录（`outline_resolve_path`）→ 获取模板（`outline_doc_template`）→ 起草 → 审批创建 → 校验。
 
 ## 开发
 
@@ -110,7 +107,7 @@ pnpm typecheck          # tsc 严格检查
 pnpm build              # 产出 lib/
 pnpm test               # vitest 单测（mock fetch：成功/空/401/403/404/429/网络/坏响应）
 node scripts/smoke.mjs  # 起本地 Mock Outline server，端到端冒烟（输出 SMOKE PASS）
-node scripts/verify-settings.mjs  # settings 命名空间 → settings.yaml → 真实搜索 全链路验证
+node scripts/verify.mjs                # 真实 settings → search → count 链路（加 --create 跑创建+清理链路）
 ```
 
 客户端半区（`client.js`）是零依赖单文件模块，无需构建。真实搜索验证脚本需要 `OUTLINE_BASE_URL` / `OUTLINE_API_TOKEN` 环境变量。
