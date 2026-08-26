@@ -17,6 +17,7 @@ const ctx = {
   tools: { register: (definition) => { tools.push(definition) } },
   inject: () => () => {},
   on: () => () => {},
+  approval: { request: async () => 'allowed-once' },
 }
 apply(ctx, { baseUrl, apiToken: 'test-token', timeoutMs: 5000, searchLimit: 5 })
 const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool]))
@@ -45,6 +46,16 @@ try {
   check('outline_create 创建成功', created.published === true && String(created.id).startsWith('new-'), JSON.stringify(created))
   const recheck = await byName.outline_count.execute({}, exec)
   check('outline_count 创建后 +1', recheck.total === 4)
+  const updated = await byName.outline_update_document.execute({ id: created.id, title: '冒烟测试文档-改' }, exec)
+  check('outline_update_document 更新标题', updated.title === '冒烟测试文档-改', JSON.stringify(updated))
+  const deleted = await byName.outline_delete.execute({ id: created.id }, exec)
+  check('outline_delete 删除成功', deleted.success === true, JSON.stringify(deleted))
+  const after = await byName.outline_count.execute({}, exec)
+  check('outline_count 删除后回落', after.total === 3)
+  const children = await byName.outline_list_children.execute({ parentId: 'doc-1' }, exec)
+  check('outline_list_children 返回子文档', Array.isArray(children), JSON.stringify(children))
+  const filtered = await byName.outline_search.execute({ query: '部署', limit: 3, collectionId: 'col-1' }, exec)
+  check('outline_search collectionId 过滤', filtered.total >= 1, JSON.stringify(filtered))
 } catch (error) {
   console.error('SMOKE ERROR:', error)
   failures++

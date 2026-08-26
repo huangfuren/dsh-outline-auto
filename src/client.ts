@@ -132,11 +132,13 @@ export class OutlineClient {
     return data as T
   }
 
-  async searchDocuments(query: string, limit: number, collectionId?: string): Promise<OutlineSearchResult> {
+  async searchDocuments(query: string, limit: number, collectionId?: string, filters?: { userId?: string; updatedAfter?: string }): Promise<OutlineSearchResult> {
     const json = await this.requestJson(`/api/documents.search`, {
       query,
       limit,
       ...(collectionId !== undefined && collectionId !== '' ? { collectionId } : {}),
+      ...(filters?.userId !== undefined && filters.userId !== '' ? { userId: filters.userId } : {}),
+      ...(filters?.updatedAfter !== undefined && filters.updatedAfter !== '' ? { updatedAfter: filters.updatedAfter } : {}),
     })
     const data = Array.isArray(json.data) ? json.data : []
     const pagination = (json.pagination ?? {}) as { total?: unknown }
@@ -200,6 +202,27 @@ export class OutlineClient {
       title: OutlineClient.stripHtml(typeof data.title === 'string' ? data.title : input.title),
       published: typeof data.published === 'boolean' ? data.published : true,
     }
+  }
+
+  /** 更新已有文档（至少提供 title 或 text 之一）。 */
+  async updateDocument(id: string, input: { title?: string; text?: string }): Promise<OutlineCreateResult> {
+    const payload: Record<string, unknown> = { id }
+    if (input.title !== undefined && input.title !== '') payload.title = input.title
+    if (input.text !== undefined && input.text !== '') payload.text = input.text
+    const data = await this.request<Record<string, unknown>>(`/api/documents.update`, payload)
+    return {
+      id: typeof data.id === 'string' ? data.id : id,
+      url: this.absolutize(typeof data.url === 'string' ? data.url : ''),
+      title: OutlineClient.stripHtml(typeof data.title === 'string' ? data.title : input.title ?? id),
+      published: typeof data.published === 'boolean' ? data.published : true,
+    }
+  }
+
+  /** 删除文档（本实例无回收站端点，为硬删；调用方必须已通过双重审批）。 */
+  async deleteDocument(id: string): Promise<{ success: boolean }> {
+    // 本实例 delete 响应形如 {success:true, ok:true}，无 data 字段 → 用 requestJson 直接读
+    const json = await this.requestJson(`/api/documents.delete`, { id })
+    return { success: json.success !== false }
   }
 
   async getDocument(id: string): Promise<OutlineDocument> {

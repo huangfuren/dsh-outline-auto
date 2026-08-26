@@ -26,6 +26,8 @@ window.__ModuleLoader__.load({
 			baseUrlHint: "Outline 实例根地址，如 https://outline.example.com",
 			apiToken: "API Token",
 			apiTokenHint: "Outline 设置 → API 密钥 中生成",
+			protectedCollections: "受保护集合（禁止写入）",
+			protectedCollectionsHint: "逗号分隔集合名，如 内部集合；留空则只有默认值（内部集合）",
 			overridden: "已覆盖",
 			reset: "恢复默认",
 			save: "保存",
@@ -45,6 +47,8 @@ window.__ModuleLoader__.load({
 			baseUrlHint: "Outline instance root, e.g. https://outline.example.com",
 			apiToken: "API Token",
 			apiTokenHint: "Create one at Outline Settings → API keys",
+			protectedCollections: "Protected collections (writes forbidden)",
+			protectedCollectionsHint: "Comma-separated collection names, e.g. 内部集合; empty falls back to the default (内部集合)",
 			overridden: "Overridden",
 			reset: "Reset",
 			save: "Save",
@@ -58,7 +62,7 @@ window.__ModuleLoader__.load({
 			emptyPlaceholder: "Leave empty to use the default",
 		};
 
-		const FIELDS = ["baseUrl", "apiToken"];
+		const FIELDS = ["baseUrl", "apiToken", "protectedCollections"];
 
 		/**
 		 * 复刻官方 PluginCard.module.css / fields.module.css 的样式规则，
@@ -330,6 +334,19 @@ window.__ModuleLoader__.load({
 							disabled: !state.writable,
 							onEdit: (text) => { props.edit("apiToken", text); },
 							onReset: () => { props.resetField("apiToken"); },
+						}),
+						React.createElement(ValueField, {
+							id: "outline-auto-protectedCollections",
+							label: t("protectedCollections"),
+							hint: t("protectedCollectionsHint"),
+							overriddenLabel: t("overridden"),
+							resetLabel: t("reset"),
+							text: state.protectedCollections.text,
+							overridden: state.protectedCollections.overridden,
+							placeholder: t("emptyPlaceholder"),
+							disabled: !state.writable,
+							onEdit: (text) => { props.edit("protectedCollections", text); },
+							onReset: () => { props.resetField("protectedCollections"); },
 						}),
 						React.createElement(
 							"div", { className: "dsh-oac-footer" },

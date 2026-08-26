@@ -53,9 +53,24 @@ export function createMockOutlineServer() {
       if (req.url === '/api/documents.create') {
         const { collectionId, title, text, publish } = parsed
         if (!collectionId || !title || !text) { send(400, { ok: false, error: 'validation_error', message: 'title/collectionId/text required' }); return }
-        const doc = { id: 'new-' + DOCS.length, title, url: '/doc/new', collectionId, updatedAt: '2026-08-25T00:00:00Z', text }
+        const doc = { id: 'new-' + DOCS.length, title, url: '/doc/new', collectionId, parentDocumentId: parsed.parentDocumentId, updatedAt: '2026-08-25T00:00:00Z', text }
         DOCS.push(doc)
         send(200, { data: { id: doc.id, title: doc.title, url: doc.url, published: publish !== false } })
+        return
+      }
+      if (req.url === '/api/documents.update') {
+        const doc = DOCS.find((d) => d.id === parsed.id)
+        if (!doc) { send(404, { ok: false, error: 'not_found' }); return }
+        if (parsed.title !== undefined) doc.title = parsed.title
+        if (parsed.text !== undefined) doc.text = parsed.text
+        send(200, { data: { id: doc.id, title: doc.title, url: doc.url, published: true } })
+        return
+      }
+      if (req.url === '/api/documents.delete') {
+        const idx = DOCS.findIndex((d) => d.id === parsed.id)
+        if (idx === -1) { send(404, { ok: false, error: 'not_found' }); return }
+        DOCS.splice(idx, 1)
+        send(200, { data: { id: parsed.id, success: true } })
         return
       }
       send(404, { ok: false, error: 'not_found' })

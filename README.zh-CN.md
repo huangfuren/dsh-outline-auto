@@ -83,12 +83,17 @@ dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.
 
 | 工具 | 说明 |
 | --- | --- |
-| `outline_search(query, limit?)` | 关键词搜索；返回该关键词的**匹配总数**，以及每条命中的标题、片段、文档 id 与链接（limit 最大 25）。 |
+| `outline_search(query, limit?, collectionId?, userId?, updatedAfter?)` | 关键词搜索；返回该关键词的**匹配总数**，以及每条命中的标题、片段、文档 id 与链接。可选过滤：集合 / 作者(userId) / 更新时间之后(updatedAfter)。 |
 | `outline_get_document(id, maxLength?)` | 按 id 取文档完整 Markdown；`maxLength` 限制返回长度（默认 20000）。 |
 | `outline_count()` | Outline 知识库文档总数（`documents.list` 分页 total，精确值；不含已删除/回收站文档，实际总数可能略多）。 |
-| `outline_list_collections()` | 列出可见集合（id、名称、权限、文档数）——用于定位创建文档的目标集合。 |
-| `outline_resolve_path(path)` | 把人话路径（如 `运维文档/个人笔记/随手记黄继晨`）解析为 `collectionId` + `parentDocumentId`，返回解析出的完整路径。创建前先用它定位具体目录。 |
-| `outline_create(collectionId, title, text, publish?, parentDocumentId?)` | **写操作**——在指定集合创建文档（默认发布；`parentDocumentId` 可嵌套到指定目录）。**每次执行前弹出 GUI 审批，展示解析出的完整路径**；受保护集合直接拒绝写入。 |
+| `outline_list_collections()` | 列出可见集合（id、名称、权限、文档数）。 |
+| `outline_resolve_path(path)` | 把人话路径（如 `运维文档/个人笔记/随手记黄继晨`）解析为 `collectionId` + `parentDocumentId`，返回解析出的完整路径。 |
+| `outline_list_children(parentId)` | 列出某目录（父文档）下的直接子文档。 |
+| `outline_create(collectionId, title, text, publish?, parentDocumentId?)` | **写操作**——创建文档（默认发布；`parentDocumentId` 可嵌套到目录）。**审批展示解析出的完整路径**。 |
+| `outline_update_document(id, title?, text?)` | **写操作**——更新已有文档的标题/正文。**审批展示文档路径**。 |
+| `outline_delete(id)` | **写操作，不可恢复**——删除文档。**双重审批**：先弹一次确认，执行删除前再确认一次。 |
+
+> 受保护集合（设置卡片可配置，逗号分隔，默认 `内部集合`）**禁止任何写入**。
 
 ## 开发
 

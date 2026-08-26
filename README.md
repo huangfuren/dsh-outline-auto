@@ -83,12 +83,17 @@ Click **Save** — applies immediately. Alternatively, configure via environment
 
 | Tool | Description |
 | --- | --- |
-| `outline_search(query, limit?)` | Keyword search; returns the match **total**, plus title, snippet, document id and link per hit (limit up to 25). |
+| `outline_search(query, limit?, collectionId?, userId?, updatedAfter?)` | Keyword search; returns the match **total**, plus title, snippet, document id and link per hit. Optional filters: collection, author (userId), updated-after. |
 | `outline_get_document(id, maxLength?)` | Fetch a document's full Markdown by id; `maxLength` caps the returned text (default 20000). |
 | `outline_count()` | Total number of documents in the knowledge base (`documents.list` total, exact; excludes trashed/deleted — the true total may be slightly higher). |
-| `outline_list_collections()` | List visible collections (id, name, permission, document count) — used to locate the target collection. |
-| `outline_resolve_path(path)` | Resolve a human path like `运维文档/个人笔记/随手记黄继晨` into `collectionId` + `parentDocumentId`; returns the resolved full path. Use it to locate the exact directory before creating. |
-| `outline_create(collectionId, title, text, publish?, parentDocumentId?)` | **Write** — create a document in a collection (default published; `parentDocumentId` nests it under a directory). **Every call requires user approval** showing the resolved full path; writes to protected collections are refused outright. |
+| `outline_list_collections()` | List visible collections (id, name, permission, document count). |
+| `outline_resolve_path(path)` | Resolve a human path like `运维文档/个人笔记/随手记黄继晨` into `collectionId` + `parentDocumentId`; returns the resolved full path. |
+| `outline_list_children(parentId)` | List direct child documents of a directory (parent document). |
+| `outline_create(collectionId, title, text, publish?, parentDocumentId?)` | **Write** — create a document (default published; nest under a directory via `parentDocumentId`). **Requires approval** showing the resolved full path. |
+| `outline_update_document(id, title?, text?)` | **Write** — update a document's title/body. **Requires approval** showing the document path. |
+| `outline_delete(id)` | **Write, irreversible** — delete a document. **Double approval**: a first prompt, then a second confirmation before deletion. |
+
+> Writes are refused in **protected collections** (configurable in the settings card, comma-separated; default `内部集合`).
 
 ## Development
 

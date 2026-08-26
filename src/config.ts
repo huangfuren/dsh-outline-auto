@@ -10,6 +10,8 @@ export interface Config {
   timeoutMs: number
   /** outline_search 默认返回条数 */
   searchLimit: number
+  /** 受保护集合名（逗号分隔），禁止在这些集合创建/更新/删除文档 */
+  protectedCollections?: string
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -17,6 +19,7 @@ export const Config: Schema<Config> = Schema.object({
   apiToken: Schema.string().description('Outline API token；环境变量 OUTLINE_API_TOKEN 优先'),
   timeoutMs: Schema.number().min(1000).default(15000).description('HTTP 请求超时（毫秒）'),
   searchLimit: Schema.number().min(1).max(25).default(10).description('outline_search 默认返回条数'),
+  protectedCollections: Schema.string().default('内部集合').description('受保护集合名（逗号分隔），禁止写入'),
 })
 
 export type { Context }

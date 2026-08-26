@@ -274,6 +274,49 @@ describe('OutlineClient', () => {
       .rejects.toMatchObject({ kind: 'auth' })
   })
 
+  it('updateDocument 携带 id 与变更字段', async () => {
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async (url, init) => {
+        expect(url).toBe('https://outline.example.com/api/documents.update')
+        expect(JSON.parse(String(init.body))).toEqual({ id: 'd1', title: '新标题' })
+        return { status: 200, body: { data: { id: 'd1', title: '新标题', url: '/doc/d1', published: true } } }
+      }),
+    })
+    const doc = await client.updateDocument('d1', { title: '新标题' })
+    expect(doc).toMatchObject({ id: 'd1', title: '新标题', url: 'https://outline.example.com/doc/d1' })
+  })
+
+  it('deleteDocument 调用删除端点', async () => {
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async (url, init) => {
+        expect(url).toBe('https://outline.example.com/api/documents.delete')
+        expect(JSON.parse(String(init.body))).toEqual({ id: 'd1' })
+        return { status: 200, body: { data: { id: 'd1', success: true } } }
+      }),
+    })
+    expect(await client.deleteDocument('d1')).toEqual({ success: true })
+  })
+
+  it('searchDocuments 透传 userId/updatedAfter（顶层参数）', async () => {
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async (_url, init) => {
+        expect(JSON.parse(String(init.body))).toEqual({
+          query: 'x', limit: 5, collectionId: 'c1', userId: 'u1',
+          updatedAfter: '2026-08-01',
+        })
+        return { status: 200, body: { data: [], pagination: { total: 0 } } }
+      }),
+    })
+    const r = await client.searchDocuments('x', 5, 'c1', { userId: 'u1', updatedAfter: '2026-08-01' })
+    expect(r.total).toBe(0)
+  })
+
   it('searchDocuments 支持 collectionId 过滤并映射 parentDocumentId', async () => {
     const client = new OutlineClient({
       baseUrl: 'https://outline.example.com',

@@ -1,8 +1,14 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
+// 类型增强：ctx.approval（ApprovalService）挂在 Context 上
+import type {} from '@deepseek-ai/dsh-user-approval'
 import { Config } from './config.js'
 import { OutlineClient } from './client.js'
-import { outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool, outlineResolvePathTool, outlineCreateTool, buildCreateApprovalReason, resolveWriteGuard } from './tools.js'
+import {
+  outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool,
+  outlineResolvePathTool, outlineCreateTool, outlineUpdateDocumentTool, outlineDeleteTool,
+  outlineListChildrenTool, buildCreateApprovalReason, resolveWriteGuard, FORBIDDEN_WRITE_COLLECTIONS,
+} from './tools.js'
 import type { OutlineCollection } from './client.js'
 
 export const name = 'dsh-outline-auto'
@@ -32,6 +38,13 @@ export function apply(ctx: Context, config: Config = {} as Config) {
     return new OutlineClient({ baseUrl, apiToken, timeoutMs: config.timeoutMs ?? 15000 })
   }
 
+  // 受保护集合：settings 用户层 → 插件配置 → 默认 ['内部集合']
+  const getProtected = (): string[] => {
+    const s = settingsSource()
+    const raw = (s.protectedCollections ?? config.protectedCollections ?? FORBIDDEN_WRITE_COLLECTIONS.join(','))
+    return raw.split(',').map((x) => x.trim()).filter((x) => x !== '')
+  }
+
   installSettingsSection(ctx, SETTINGS_NS, Config, {} as Config, {
     setSource: (current) => {
       settingsSource = current
@@ -44,31 +57,69 @@ export function apply(ctx: Context, config: Config = {} as Config) {
   ctx.tools.register(outlineCountTool(makeClient))
   ctx.tools.register(outlineListCollectionsTool(makeClient))
   ctx.tools.register(outlineResolvePathTool(makeClient))
-  ctx.tools.register(outlineCreateTool(makeClient))
+  ctx.tools.register(outlineListChildrenTool(makeClient))
+  ctx.tools.register(outlineCreateTool(makeClient, getProtected))
+  ctx.tools.register(outlineUpdateDocumentTool(makeClient, getProtected))
+  ctx.tools.register(outlineDeleteTool(makeClient, getProtected, async (reason, exec) => {
+    const outcome = await ctx.approval.request({
+      agent: exec.agent as never,
+      toolName: 'outline_delete',
+      callId: exec.callId as never,
+      reason,
+    })
+    return outcome === 'allowed-once'
+  }))
 
-  // 写工具审批闸：仅 outline_create 需用户确认；受保护集合直接拒绝（连审批都不弹）。
+  // 写工具审批闸：create/update/delete 需用户确认；受保护集合直接拒绝（连审批都不弹）。
   ctx.on('tools/pre-execute', async (exec, next) => {
-    if (exec.name !== 'outline_create') return next()
-    const args = (exec.arguments ?? {}) as { collectionId?: string; title?: string; text?: string; parentDocumentId?: string }
-    let collectionName: string | undefined
-    let resolvedPath: string[] | undefined
-    let collections: OutlineCollection[] = []
-    try {
-      collections = await makeClient().listCollections()
-      collectionName = collections.find((c) => c.id === args.collectionId)?.name
-    } catch {
-      collectionName = undefined // 查不到集合名时退回 collectionId
-    }
-    // 有父文档时解析完整目录路径，让用户确认"具体在哪创建"
-    if (args.parentDocumentId !== undefined && args.parentDocumentId !== '') {
+    const name = exec.name
+    const args = (exec.arguments ?? {}) as Record<string, string | undefined>
+
+    if (name === 'outline_create') {
+      const a = args as { collectionId?: string; title?: string; text?: string; parentDocumentId?: string }
+      let collectionName: string | undefined
+      let resolvedPath: string[] | undefined
+      let collections: OutlineCollection[] = []
       try {
-        resolvedPath = await makeClient().resolveDocumentPath(args.parentDocumentId)
+        collections = await makeClient().listCollections()
+        collectionName = collections.find((c) => c.id === a.collectionId)?.name
       } catch {
-        resolvedPath = undefined
+        collectionName = undefined
       }
+      if (a.parentDocumentId !== undefined && a.parentDocumentId !== '') {
+        try {
+          resolvedPath = await makeClient().resolveDocumentPath(a.parentDocumentId)
+        } catch {
+          resolvedPath = undefined
+        }
+      }
+      const guard = resolveWriteGuard(collections, a.collectionId ?? '', getProtected())
+      if (guard !== null) return { kind: 'deny', reason: guard }
+      return { kind: 'ask', reason: buildCreateApprovalReason(a, collectionName, resolvedPath) }
     }
-    const guard = resolveWriteGuard(collections, args.collectionId ?? '')
-    if (guard !== null) return { kind: 'deny', reason: guard }
-    return { kind: 'ask', reason: buildCreateApprovalReason(args, collectionName, resolvedPath) }
+
+    if (name === 'outline_update_document' || name === 'outline_delete') {
+      const id = args.id ?? ''
+      if (id === '') return next()
+      let docPath: string[] | undefined
+      let collectionId: string | undefined
+      try {
+        const client = makeClient()
+        docPath = await client.resolveDocumentPath(id)
+        collectionId = (await client.getDocument(id)).collectionId
+      } catch {
+        // 解析失败仍继续走 ask（reason 里看不到路径也至少让用户确认操作）
+      }
+      const guard = resolveWriteGuard(await makeClient().listCollections().catch(() => []), collectionId ?? '', getProtected())
+      if (guard !== null) return { kind: 'deny', reason: guard }
+      const where = docPath !== undefined && docPath.length > 0 ? `路径：${docPath.join(' / ')}` : `文档 id：${id}`
+      if (name === 'outline_update_document') {
+        const changes = [args.title !== undefined ? '改标题' : '', args.text !== undefined ? '改正文' : ''].filter(Boolean).join(' + ')
+        return { kind: 'ask', reason: `将更新 Outline 文档：\n${where}\n变更：${changes}` }
+      }
+      return { kind: 'ask', reason: `将删除 Outline 文档（第 1 次确认）：\n${where}` }
+    }
+
+    return next()
   })
 }

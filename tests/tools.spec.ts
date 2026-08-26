@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool, outlineResolvePathTool, outlineCreateTool, buildCreateApprovalReason, resolveWriteGuard } from '../src/tools.js'
+import { outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool, outlineResolvePathTool, outlineCreateTool, outlineUpdateDocumentTool, outlineDeleteTool, outlineListChildrenTool, buildCreateApprovalReason, resolveWriteGuard } from '../src/tools.js'
 import { OutlineApiError } from '../src/errors.js'
 import type { OutlineClient } from '../src/client.js'
 
@@ -77,28 +77,28 @@ describe('outline_create', () => {
     const tool = outlineCreateTool(() => fakeClient({
       listCollections: async () => [{ id: 'col-1', name: '测试集合', permission: 'read_write' }],
       createDocument: async (input) => { seen = input; return { id: 'd1', url: 'https://outline.example.com/doc/d1', title: input.title, published: true } },
-    }))
+    }), () => ['内部集合'])
     const result = await tool.execute({ collectionId: 'col-1', title: 'T', text: 'B', parentDocumentId: 'parent-1' }, exec) as any
     expect(seen).toEqual({ collectionId: 'col-1', parentDocumentId: 'parent-1', title: 'T', text: 'B', publish: undefined })
     expect(result.url).toContain('doc/d1')
   })
 
   it('execute 拒绝向受保护集合写入', async () => {
-    const tool = outlineCreateTool(() => fakeClient({ listCollections: async () => [{ id: 'ops', name: '内部集合', permission: 'read_write' }] }))
+    const tool = outlineCreateTool(() => fakeClient({ listCollections: async () => [{ id: 'ops', name: '内部集合', permission: 'read_write' }] }), () => ['内部集合'])
     await expect(tool.execute({ collectionId: 'ops', title: 'T', text: 'B' }, exec)).rejects.toThrow('禁止')
   })
 })
 
 describe('resolveWriteGuard', () => {
   it('禁止在受保护集合写入', () => {
-    const err = resolveWriteGuard([{ id: 'c1', name: '内部集合', permission: 'read_write' }], 'c1')
+    const err = resolveWriteGuard([{ id: 'c1', name: '内部集合', permission: 'read_write' }], 'c1', ['内部集合'])
     expect(err).toContain('禁止')
   })
   it('普通集合放行', () => {
-    expect(resolveWriteGuard([{ id: 'c2', name: '测试集合', permission: 'read_write' }], 'c2')).toBeNull()
+    expect(resolveWriteGuard([{ id: 'c2', name: '测试集合', permission: 'read_write' }], 'c2', ['内部集合'])).toBeNull()
   })
   it('集合名未知时放行（id 兜底）', () => {
-    expect(resolveWriteGuard([], 'c9')).toBeNull()
+    expect(resolveWriteGuard([], 'c9', ['内部集合'])).toBeNull()
   })
 })
 
@@ -129,6 +129,72 @@ describe('outline_resolve_path', () => {
       searchDocuments: async () => ({ total: 0, hits: [] }),
     }))
     await expect(tool.execute({ path: '运维集合/不存在的目录' }, exec)).rejects.toThrow('找不到')
+  })
+})
+
+describe('outline_search 过滤', () => {
+  it('透传 collectionId/userId/updatedAfter', async () => {
+    let seen: any
+    const tool = outlineSearchTool(() => fakeClient({ searchDocuments: async (q, l, coll, filters) => { seen = { q, l, coll, filters }; return { total: 0, hits: [] } } }), 10)
+    await tool.execute({ query: 'x', collectionId: 'c1', userId: 'u1', updatedAfter: '2026-08-01' }, exec)
+    expect(seen).toEqual({ q: 'x', l: 10, coll: 'c1', filters: { userId: 'u1', updatedAfter: '2026-08-01' } })
+  })
+})
+
+describe('outline_update_document', () => {
+  it('更新标题并传参', async () => {
+    let seen: any
+    const tool = outlineUpdateDocumentTool(() => fakeClient({
+      getDocument: async () => ({ id: 'd1', title: '旧', url: '/d', text: 'x', updatedAt: '', collectionId: 'col-1' }),
+      listCollections: async () => [{ id: 'col-1', name: '测试集合', permission: 'read_write' }],
+      updateDocument: async (id, input) => { seen = { id, ...input }; return { id, url: '/doc/d1', title: input.title ?? '旧', published: true } },
+    }), () => ['内部集合'])
+    const r = await tool.execute({ id: 'd1', title: '新标题' }, exec) as any
+    expect(seen).toEqual({ id: 'd1', title: '新标题' })
+    expect(r.title).toBe('新标题')
+  })
+  it('受保护集合拒绝更新', async () => {
+    const tool = outlineUpdateDocumentTool(() => fakeClient({
+      getDocument: async () => ({ id: 'd1', title: 'T', url: '/d', text: 'x', updatedAt: '', collectionId: 'ops' }),
+      listCollections: async () => [{ id: 'ops', name: '内部集合', permission: 'read_write' }],
+    }), () => ['内部集合'])
+    await expect(tool.execute({ id: 'd1', text: 'x' }, exec)).rejects.toThrow('禁止')
+  })
+  it('至少需要 title 或 text', async () => {
+    const tool = outlineUpdateDocumentTool(() => fakeClient(), () => ['内部集合'])
+    await expect(tool.execute({ id: 'd1' }, exec)).rejects.toThrow('至少需要')
+  })
+})
+
+describe('outline_delete', () => {
+  it('第二道审批通过后删除', async () => {
+    let asked = ''
+    const tool = outlineDeleteTool(() => fakeClient({
+      getDocument: async () => ({ id: 'd1', title: 'T', url: '/d', text: 'x', updatedAt: '', collectionId: 'col-1' }),
+      listCollections: async () => [{ id: 'col-1', name: '测试集合', permission: 'read_write' }],
+      resolveDocumentPath: async () => ['测试集合', 'T'],
+      deleteDocument: async () => ({ success: true }),
+    }), () => ['内部集合'], async (reason, _exec) => { asked = reason; return true })
+    const r = await tool.execute({ id: 'd1' }, exec) as any
+    expect(asked).toContain('再次确认')
+    expect(r.success).toBe(true)
+  })
+  it('第二道审批拒绝则取消删除', async () => {
+    const tool = outlineDeleteTool(() => fakeClient({
+      getDocument: async () => ({ id: 'd1', title: 'T', url: '/d', text: 'x', updatedAt: '', collectionId: 'col-1' }),
+      listCollections: async () => [{ id: 'col-1', name: '测试集合', permission: 'read_write' }],
+      resolveDocumentPath: async () => ['测试集合', 'T'],
+    }), () => ['内部集合'], async () => false)
+    await expect(tool.execute({ id: 'd1' }, exec)).rejects.toThrow('取消')
+  })
+})
+
+describe('outline_list_children', () => {
+  it('返回子文档', async () => {
+    const tool = outlineListChildrenTool(() => fakeClient({ listChildDocuments: async () => [{ id: 'c1', title: '子', url: '/d', snippet: '', collectionId: 'col-1', updatedAt: '' }] }))
+    const r = await tool.execute({ parentId: 'p' }, exec) as any
+    expect(r).toHaveLength(1)
+    expect(r[0].title).toBe('子')
   })
 })
 

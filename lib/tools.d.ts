@@ -11,13 +11,25 @@ export declare function buildCreateApprovalReason(args: {
     title?: string;
     text?: string;
 }, collectionName?: string, resolvedPath?: string[]): string;
-/** 禁止写入的集合名（精确匹配，去除首尾空白）。命中即拒绝 outline_create，即使审批也不会放行。 */
+/** 默认受保护集合（settings 未配置时的兜底）。 */
 export declare const FORBIDDEN_WRITE_COLLECTIONS: readonly string[];
+/** 写工具守卫来源：返回当前受保护集合名列表。 */
+export interface WriteGuards {
+    protectedCollections: () => string[];
+}
 /**
- * 写入守卫：按集合名判断是否允许创建文档。
+ * 写入守卫：按集合名判断是否允许写入（创建/更新/删除）。
  * @returns 禁止时返回错误提示文案；允许时返回 null。
  */
-export declare function resolveWriteGuard(collections: OutlineCollection[], collectionId: string): string | null;
+export declare function resolveWriteGuard(collections: OutlineCollection[], collectionId: string, protectedList: string[]): string | null;
 export declare function outlineResolvePathTool(makeClient: () => OutlineClient): import("@deepseek-ai/dsh-tools").ToolDefinition;
 export declare function outlineListCollectionsTool(makeClient: () => OutlineClient): import("@deepseek-ai/dsh-tools").ToolDefinition;
-export declare function outlineCreateTool(makeClient: () => OutlineClient): import("@deepseek-ai/dsh-tools").ToolDefinition;
+export declare function outlineCreateTool(makeClient: () => OutlineClient, getProtected: () => string[]): import("@deepseek-ai/dsh-tools").ToolDefinition;
+export declare function outlineUpdateDocumentTool(makeClient: () => OutlineClient, getProtected: () => string[]): import("@deepseek-ai/dsh-tools").ToolDefinition;
+/** 二次审批回调：由 index.ts 接线到 ctx.approval.request，返回是否 allowed-once。 */
+export type DeleteApprovalRequester = (reason: string, exec: {
+    agent?: unknown;
+    callId?: unknown;
+}) => Promise<boolean>;
+export declare function outlineDeleteTool(makeClient: () => OutlineClient, getProtected: () => string[], requestApproval: DeleteApprovalRequester): import("@deepseek-ai/dsh-tools").ToolDefinition;
+export declare function outlineListChildrenTool(makeClient: () => OutlineClient): import("@deepseek-ai/dsh-tools").ToolDefinition;

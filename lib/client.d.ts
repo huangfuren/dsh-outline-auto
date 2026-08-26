@@ -59,7 +59,10 @@ export declare class OutlineClient {
     /** 请求并返回完整 JSON 响应体（data + pagination 等元数据）。 */
     private requestJson;
     private request;
-    searchDocuments(query: string, limit: number, collectionId?: string): Promise<OutlineSearchResult>;
+    searchDocuments(query: string, limit: number, collectionId?: string, filters?: {
+        userId?: string;
+        updatedAfter?: string;
+    }): Promise<OutlineSearchResult>;
     /** 统计 Outline 知识库文档总数（documents.list 分页 total；不含已删除/回收站文档）。 */
     countDocuments(filters?: Record<string, unknown>): Promise<number>;
     /** 列出当前 token 可见的集合（60s 缓存）。注：实例要求 collections.list 带查询串。 */
@@ -72,6 +75,15 @@ export declare class OutlineClient {
         publish?: boolean;
         parentDocumentId?: string;
     }): Promise<OutlineCreateResult>;
+    /** 更新已有文档（至少提供 title 或 text 之一）。 */
+    updateDocument(id: string, input: {
+        title?: string;
+        text?: string;
+    }): Promise<OutlineCreateResult>;
+    /** 删除文档（本实例无回收站端点，为硬删；调用方必须已通过双重审批）。 */
+    deleteDocument(id: string): Promise<{
+        success: boolean;
+    }>;
     getDocument(id: string): Promise<OutlineDocument>;
     /** 列出某父文档下的直接子文档（用于路径定位；本地匹配名称，避免搜索分词歧义）。 */
     listChildDocuments(parentDocumentId: string, limit?: number): Promise<OutlineSearchHit[]>;
