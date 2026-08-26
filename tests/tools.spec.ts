@@ -189,6 +189,19 @@ describe('outline_delete', () => {
   })
 })
 
+describe('输出 schema 完整性（回归：parentDocumentId 等字段必须声明，避免被 additionalProperties:false 剥离）', () => {
+  it('search/get_document/list_children schema 声明 parentDocumentId/collectionId', () => {
+    const search = (outlineSearchTool(() => fakeClient(), 10) as any).output.schema
+    expect(search.properties.hits.items.properties.parentDocumentId).toBeDefined()
+    const get = (outlineGetDocumentTool(() => fakeClient()) as any).output.schema
+    expect(get.properties.collectionId).toBeDefined()
+    expect(get.properties.parentDocumentId).toBeDefined()
+    const children = (outlineListChildrenTool(() => fakeClient()) as any).output.schema
+    expect(children.items.properties.parentDocumentId).toBeDefined()
+    expect(children.items.properties.snippet).toBeDefined()
+  })
+})
+
 describe('outline_list_children', () => {
   it('返回子文档', async () => {
     const tool = outlineListChildrenTool(() => fakeClient({ listChildDocuments: async () => [{ id: 'c1', title: '子', url: '/d', snippet: '', collectionId: 'col-1', updatedAt: '' }] }))
