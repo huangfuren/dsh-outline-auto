@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool, outlineCreateTool, buildCreateApprovalReason } from '../src/tools.js'
+import { outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool, outlineCreateTool, buildCreateApprovalReason, resolveWriteGuard } from '../src/tools.js'
 import { OutlineApiError } from '../src/errors.js'
 import type { OutlineClient } from '../src/client.js'
 
@@ -74,10 +74,31 @@ describe('outline_list_collections', () => {
 describe('outline_create', () => {
   it('execute 传入参数并返回结果', async () => {
     let seen: any
-    const tool = outlineCreateTool(() => fakeClient({ createDocument: async (input) => { seen = input; return { id: 'd1', url: 'https://outline.example.com/doc/d1', title: input.title, published: true } } }))
+    const tool = outlineCreateTool(() => fakeClient({
+      listCollections: async () => [{ id: 'col-1', name: '测试集合', permission: 'read_write' }],
+      createDocument: async (input) => { seen = input; return { id: 'd1', url: 'https://outline.example.com/doc/d1', title: input.title, published: true } },
+    }))
     const result = await tool.execute({ collectionId: 'col-1', title: 'T', text: 'B' }, exec) as any
     expect(seen).toEqual({ collectionId: 'col-1', title: 'T', text: 'B', publish: undefined })
     expect(result.url).toContain('doc/d1')
+  })
+
+  it('execute 拒绝向受保护集合写入', async () => {
+    const tool = outlineCreateTool(() => fakeClient({ listCollections: async () => [{ id: 'ops', name: '内部集合', permission: 'read_write' }] }))
+    await expect(tool.execute({ collectionId: 'ops', title: 'T', text: 'B' }, exec)).rejects.toThrow('禁止')
+  })
+})
+
+describe('resolveWriteGuard', () => {
+  it('禁止在受保护集合写入', () => {
+    const err = resolveWriteGuard([{ id: 'c1', name: '内部集合', permission: 'read_write' }], 'c1')
+    expect(err).toContain('禁止')
+  })
+  it('普通集合放行', () => {
+    expect(resolveWriteGuard([{ id: 'c2', name: '测试集合', permission: 'read_write' }], 'c2')).toBeNull()
+  })
+  it('集合名未知时放行（id 兜底）', () => {
+    expect(resolveWriteGuard([], 'c9')).toBeNull()
   })
 })
 

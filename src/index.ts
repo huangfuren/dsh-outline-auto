@@ -2,7 +2,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { Config } from './config.js'
 import { OutlineClient } from './client.js'
-import { outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool, outlineCreateTool, buildCreateApprovalReason } from './tools.js'
+import { outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool, outlineCreateTool, buildCreateApprovalReason, resolveWriteGuard } from './tools.js'
+import type { OutlineCollection } from './client.js'
 
 export const name = 'dsh-outline-auto'
 export const inject = ['tools']
@@ -44,17 +45,20 @@ export function apply(ctx: Context, config: Config = {} as Config) {
   ctx.tools.register(outlineListCollectionsTool(makeClient))
   ctx.tools.register(outlineCreateTool(makeClient))
 
-  // 写工具审批闸：仅 outline_create 需用户确认；其余工具放行。
+  // 写工具审批闸：仅 outline_create 需用户确认；受保护集合直接拒绝（连审批都不弹）。
   ctx.on('tools/pre-execute', async (exec, next) => {
     if (exec.name !== 'outline_create') return next()
     const args = (exec.arguments ?? {}) as { collectionId?: string; title?: string; text?: string }
     let collectionName: string | undefined
+    let collections: OutlineCollection[] = []
     try {
-      const collections = await makeClient().listCollections()
+      collections = await makeClient().listCollections()
       collectionName = collections.find((c) => c.id === args.collectionId)?.name
     } catch {
       collectionName = undefined // 查不到集合名时退回 collectionId
     }
+    const guard = resolveWriteGuard(collections, args.collectionId ?? '')
+    if (guard !== null) return { kind: 'deny', reason: guard }
     return { kind: 'ask', reason: buildCreateApprovalReason(args, collectionName) }
   })
 }

@@ -87,7 +87,7 @@ dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.
 | `outline_get_document(id, maxLength?)` | 按 id 取文档完整 Markdown；`maxLength` 限制返回长度（默认 20000）。 |
 | `outline_count()` | Outline 知识库文档总数（`documents.list` 分页 total，精确值；不含已删除/回收站文档，实际总数可能略多）。 |
 | `outline_list_collections()` | 列出可见集合（id、名称、权限、文档数）——用于定位创建文档的目标集合。 |
-| `outline_create(collectionId, title, text, publish?)` | **写操作**——在指定集合创建文档（默认发布）。**每次执行前都会弹出 GUI 审批确认**，用户批准后才真正写入。 |
+| `outline_create(collectionId, title, text, publish?)` | **写操作**——在指定集合创建文档（默认发布）。**每次执行前都会弹出 GUI 审批确认**；受保护集合会被直接拒绝写入。 |
 
 ## 开发
 
