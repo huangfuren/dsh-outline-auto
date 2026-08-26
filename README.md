@@ -87,7 +87,7 @@ Click **Save** — applies immediately. Alternatively, configure via environment
 | `outline_get_document(id, maxLength?)` | Fetch a document's full Markdown by id; `maxLength` caps the returned text (default 20000). |
 | `outline_count()` | Total number of documents in the knowledge base (`documents.list` total, exact; excludes trashed/deleted — the true total may be slightly higher). |
 | `outline_list_collections()` | List visible collections (id, name, permission, document count). |
-| `outline_resolve_path(path)` | Resolve a human path like `运维文档/个人笔记/随手记黄继晨` into `collectionId` + `parentDocumentId`; returns the resolved full path. |
+| `outline_resolve_path(path)` | Resolve a human path like `运维文档/目录A/子目录` into `collectionId` + `parentDocumentId`; returns the resolved full path. |
 | `outline_list_children(parentId)` | List direct child documents of a directory (parent document). |
 | `outline_doc_template()` | Return the standard requirement-document template (Markdown) + required section list — call it before writing a requirement doc. |
 | `outline_create(collectionId, title, text, publish?, parentDocumentId?)` | **Write** — create a document (default published; nest under a directory via `parentDocumentId`). **Requires approval** showing the resolved full path. |
@@ -98,8 +98,8 @@ Click **Save** — applies immediately. Alternatively, configure via environment
 
 ### Workflow: writing a requirement document (common task)
 
-1. `outline_resolve_path("运维文档/个人笔记/随手记黄继晨")` — locate the target directory (`collectionId` + `parentDocumentId`).
-2. `outline_doc_template()` — fetch the standard template and required sections.
+1. `outline_resolve_path("运维文档/目录A/子目录")` — locate the target directory (`collectionId` + `parentDocumentId`).
+2. `outline_doc_template()` — fetch the standard template and required sections (aligned with the collection's pinned docs).
 3. Draft the content per the template, then `outline_create(collectionId, parentDocumentId, title, text)` — the approval prompt shows the resolved full path; confirm to create.
 4. Verify via the returned link.
 

@@ -190,14 +190,15 @@ describe('outline_delete', () => {
 })
 
 describe('outline_doc_template', () => {
-  it('返回需求文档模板且包含全部章节', async () => {
+  it('返回需求文档模板且包含全部章节（参考置顶文档 v4 模板）', async () => {
     const tool = outlineDocTemplateTool()
     const r = await tool.execute({} as never, exec) as any
-    for (const s of ['【目标】', '【交付物】', '【交付标准】', '【交付时间】', '【工作思路】', '【潜在风险点】', '当前状态']) {
+    for (const s of ['【需求或目标】', '【交付物】', '【交付标准】', '【交付时间】', '【潜在风险点】', '【解决的问题】', '【工作思路】', '【备注】', '当前状态']) {
       expect(r.template).toContain(s)
     }
-    expect(r.sections).toContain('目标')
+    expect(r.sections).toContain('需求或目标')
     expect(r.sections).toContain('潜在风险点')
+    expect(r.sections).toContain('备注')
   })
 })
 

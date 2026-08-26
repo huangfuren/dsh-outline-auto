@@ -17,7 +17,7 @@ export declare const FORBIDDEN_WRITE_COLLECTIONS: readonly string[];
 export interface WriteGuards {
     protectedCollections: () => string[];
 }
-/** 团队标准需求文档模板（Markdown），供 AI 撰写需求文档时参考格式。 */
+/** 团队标准需求文档模板（Markdown，依据团队规范的需求对齐模板 v4）。 */
 export declare const REQUIREMENT_DOC_TEMPLATE: string;
 /** 模板的章节清单（供 AI 核对是否写全）。 */
 export declare const REQUIREMENT_DOC_SECTIONS: string[];

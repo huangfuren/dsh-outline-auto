@@ -87,7 +87,7 @@ dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.
 | `outline_get_document(id, maxLength?)` | 按 id 取文档完整 Markdown；`maxLength` 限制返回长度（默认 20000）。 |
 | `outline_count()` | Outline 知识库文档总数（`documents.list` 分页 total，精确值；不含已删除/回收站文档，实际总数可能略多）。 |
 | `outline_list_collections()` | 列出可见集合（id、名称、权限、文档数）。 |
-| `outline_resolve_path(path)` | 把人话路径（如 `运维文档/个人笔记/随手记黄继晨`）解析为 `collectionId` + `parentDocumentId`，返回解析出的完整路径。 |
+| `outline_resolve_path(path)` | 把人话路径（如 `运维文档/目录A/子目录`）解析为 `collectionId` + `parentDocumentId`，返回解析出的完整路径。 |
 | `outline_list_children(parentId)` | 列出某目录（父文档）下的直接子文档。 |
 | `outline_doc_template()` | 返回团队标准需求文档模板（Markdown）+ 必备章节清单——写需求文档前先调用，保证格式一致。 |
 | `outline_create(collectionId, title, text, publish?, parentDocumentId?)` | **写操作**——创建文档（默认发布；`parentDocumentId` 可嵌套到目录）。**审批展示解析出的完整路径**。 |
@@ -98,8 +98,8 @@ dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.
 
 ### 工作流：撰写需求文档（高频操作）
 
-1. `outline_resolve_path("运维文档/个人笔记/随手记黄继晨")` — 定位目标目录（得到 `collectionId` + `parentDocumentId`）
-2. `outline_doc_template()` — 获取标准需求文档模板与必备章节
+1. `outline_resolve_path("运维文档/目录A/子目录")` — 定位目标目录（得到 `collectionId` + `parentDocumentId`）
+2. `outline_doc_template()` — 获取标准需求文档模板与必备章节（与集合置顶文档对齐）
 3. 按模板起草内容 → `outline_create(collectionId, parentDocumentId, title, text)` — 审批弹窗展示解析后的完整路径，确认后创建
 4. 用返回的链接校验位置
 
