@@ -1,6 +1,6 @@
 {
     "name": "dsh-outline-auto",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "DSH web plugin: search and read the company Outline knowledge base from conversations.",
     "type": "module",
     "license": "MIT",
