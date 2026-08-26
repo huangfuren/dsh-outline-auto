@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool, outlineCreateTool, buildCreateApprovalReason, resolveWriteGuard } from '../src/tools.js'
+import { outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool, outlineResolvePathTool, outlineCreateTool, buildCreateApprovalReason, resolveWriteGuard } from '../src/tools.js'
 import { OutlineApiError } from '../src/errors.js'
 import type { OutlineClient } from '../src/client.js'
 
@@ -78,8 +78,8 @@ describe('outline_create', () => {
       listCollections: async () => [{ id: 'col-1', name: '测试集合', permission: 'read_write' }],
       createDocument: async (input) => { seen = input; return { id: 'd1', url: 'https://outline.example.com/doc/d1', title: input.title, published: true } },
     }))
-    const result = await tool.execute({ collectionId: 'col-1', title: 'T', text: 'B' }, exec) as any
-    expect(seen).toEqual({ collectionId: 'col-1', title: 'T', text: 'B', publish: undefined })
+    const result = await tool.execute({ collectionId: 'col-1', title: 'T', text: 'B', parentDocumentId: 'parent-1' }, exec) as any
+    expect(seen).toEqual({ collectionId: 'col-1', parentDocumentId: 'parent-1', title: 'T', text: 'B', publish: undefined })
     expect(result.url).toContain('doc/d1')
   })
 
@@ -99,6 +99,36 @@ describe('resolveWriteGuard', () => {
   })
   it('集合名未知时放行（id 兜底）', () => {
     expect(resolveWriteGuard([], 'c9')).toBeNull()
+  })
+})
+
+describe('outline_resolve_path', () => {
+  it('解析 集合/目录1/目录2 路径', async () => {
+    const tool = outlineResolvePathTool(() => fakeClient({
+      listCollections: async () => [{ id: 'col-1', name: '运维集合', permission: 'read_write' }],
+      searchDocuments: async (q: string, _l: number, collectionId?: string) => {
+        if (q === '个人笔记') return { total: 1, hits: [{ id: 'root-1', title: '《个人笔记》', url: '/d', snippet: '', collectionId: collectionId ?? 'col-1', updatedAt: '' }] }
+        return { total: 0, hits: [] }
+      },
+      listChildDocuments: async (parentId: string) => parentId === 'root-1'
+        ? [{ id: 'leaf-1', title: '随手记-黄继晨', url: '/d', snippet: '', collectionId: 'col-1', updatedAt: '', parentDocumentId: 'root-1' }]
+        : [],
+    }))
+    const result = await tool.execute({ path: '运维集合/个人笔记/随手记黄继晨' }, exec) as any
+    expect(result).toMatchObject({ collectionId: 'col-1', parentDocumentId: 'leaf-1', path: ['运维集合', '《个人笔记》', '随手记-黄继晨'] })
+  })
+
+  it('集合不存在时报错并列出候选', async () => {
+    const tool = outlineResolvePathTool(() => fakeClient({ listCollections: async () => [{ id: 'col-1', name: '运维集合', permission: 'read_write' }] }))
+    await expect(tool.execute({ path: '不存在的集合/x' }, exec)).rejects.toThrow('找不到集合')
+  })
+
+  it('子目录找不到时报错', async () => {
+    const tool = outlineResolvePathTool(() => fakeClient({
+      listCollections: async () => [{ id: 'col-1', name: '运维集合', permission: 'read_write' }],
+      searchDocuments: async () => ({ total: 0, hits: [] }),
+    }))
+    await expect(tool.execute({ path: '运维集合/不存在的目录' }, exec)).rejects.toThrow('找不到')
   })
 })
 

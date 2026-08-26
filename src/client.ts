@@ -7,6 +7,7 @@ export interface OutlineSearchHit {
   snippet: string
   collectionId: string
   updatedAt: string
+  parentDocumentId?: string
 }
 
 /** 搜索结果：命中列表 + 该关键词在知识库中的匹配总数（pagination.total）。 */
@@ -21,6 +22,8 @@ export interface OutlineDocument {
   url: string
   text: string
   updatedAt: string
+  collectionId?: string
+  parentDocumentId?: string
 }
 
 /** Outline 集合（collections.list 条目）。documentCount 部分实例可能不返回。 */
@@ -129,8 +132,12 @@ export class OutlineClient {
     return data as T
   }
 
-  async searchDocuments(query: string, limit: number): Promise<OutlineSearchResult> {
-    const json = await this.requestJson(`/api/documents.search`, { query, limit })
+  async searchDocuments(query: string, limit: number, collectionId?: string): Promise<OutlineSearchResult> {
+    const json = await this.requestJson(`/api/documents.search`, {
+      query,
+      limit,
+      ...(collectionId !== undefined && collectionId !== '' ? { collectionId } : {}),
+    })
     const data = Array.isArray(json.data) ? json.data : []
     const pagination = (json.pagination ?? {}) as { total?: unknown }
     const hits: OutlineSearchHit[] = data.map((item) => {
@@ -143,6 +150,9 @@ export class OutlineClient {
         snippet: OutlineClient.stripHtml(typeof record.context === 'string' ? record.context : ''),
         collectionId: typeof document.collectionId === 'string' ? document.collectionId : '',
         updatedAt: typeof document.updatedAt === 'string' ? document.updatedAt : '',
+        ...(document.parentDocumentId !== undefined && document.parentDocumentId !== null
+          ? { parentDocumentId: String(document.parentDocumentId) }
+          : {}),
       }
     })
     const total = typeof pagination.total === 'number' ? pagination.total : hits.length
@@ -175,13 +185,14 @@ export class OutlineClient {
     return collections
   }
 
-  /** 在指定集合创建文档（默认发布）。 */
-  async createDocument(input: { collectionId: string; title: string; text: string; publish?: boolean }): Promise<OutlineCreateResult> {
+  /** 在指定集合创建文档（默认发布；可指定父文档实现嵌套）。 */
+  async createDocument(input: { collectionId: string; title: string; text: string; publish?: boolean; parentDocumentId?: string }): Promise<OutlineCreateResult> {
     const data = await this.request<Record<string, unknown>>(`/api/documents.create`, {
       collectionId: input.collectionId,
       title: input.title,
       text: input.text,
       publish: input.publish ?? true,
+      ...(input.parentDocumentId !== undefined && input.parentDocumentId !== '' ? { parentDocumentId: input.parentDocumentId } : {}),
     })
     return {
       id: typeof data.id === 'string' ? data.id : '',
@@ -201,8 +212,51 @@ export class OutlineClient {
       url: this.absolutize(typeof data.url === 'string' ? data.url : ''),
       text: typeof data.text === 'string' ? data.text : '',
       updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : '',
+      ...(data.collectionId !== undefined && data.collectionId !== null ? { collectionId: String(data.collectionId) } : {}),
+      ...(data.parentDocumentId !== undefined && data.parentDocumentId !== null
+        ? { parentDocumentId: String(data.parentDocumentId) }
+        : {}),
     }
     this.docCache.set(id, { expires: Date.now() + OutlineClient.DOC_CACHE_TTL_MS, doc })
     return doc
+  }
+
+  /** 列出某父文档下的直接子文档（用于路径定位；本地匹配名称，避免搜索分词歧义）。 */
+  async listChildDocuments(parentDocumentId: string, limit = 100): Promise<OutlineSearchHit[]> {
+    const json = await this.requestJson(`/api/documents.list`, { parentDocumentId, limit })
+    const data = Array.isArray(json.data) ? json.data : []
+    return data.map((item) => {
+      const d = (item ?? {}) as Record<string, unknown>
+      return {
+        id: typeof d.id === 'string' ? d.id : '',
+        title: OutlineClient.stripHtml(typeof d.title === 'string' ? d.title : '(无标题)'),
+        url: this.absolutize(typeof d.url === 'string' ? d.url : ''),
+        snippet: '',
+        collectionId: typeof d.collectionId === 'string' ? d.collectionId : '',
+        updatedAt: typeof d.updatedAt === 'string' ? d.updatedAt : '',
+        ...(d.parentDocumentId !== undefined && d.parentDocumentId !== null ? { parentDocumentId: String(d.parentDocumentId) } : {}),
+      }
+    })
+  }
+
+  /** 解析一个文档的完整路径：返回 [集合名, 顶级目录, …, 文档名]（自顶向下）。 */
+  async resolveDocumentPath(docId: string): Promise<string[]> {
+    const titles: string[] = []
+    let collectionId: string | undefined
+    let currentId = docId
+    const seen = new Set<string>()
+    while (currentId !== undefined && currentId !== '' && !seen.has(currentId)) {
+      seen.add(currentId)
+      const doc = await this.getDocument(currentId)
+      collectionId ??= doc.collectionId
+      titles.unshift(doc.title)
+      currentId = doc.parentDocumentId ?? ''
+    }
+    if (collectionId !== undefined) {
+      const collections = await this.listCollections()
+      const coll = collections.find((c) => c.id === collectionId)
+      if (coll !== undefined) titles.unshift(coll.name)
+    }
+    return titles
   }
 }

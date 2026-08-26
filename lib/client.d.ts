@@ -5,6 +5,7 @@ export interface OutlineSearchHit {
     snippet: string;
     collectionId: string;
     updatedAt: string;
+    parentDocumentId?: string;
 }
 /** 搜索结果：命中列表 + 该关键词在知识库中的匹配总数（pagination.total）。 */
 export interface OutlineSearchResult {
@@ -17,6 +18,8 @@ export interface OutlineDocument {
     url: string;
     text: string;
     updatedAt: string;
+    collectionId?: string;
+    parentDocumentId?: string;
 }
 /** Outline 集合（collections.list 条目）。documentCount 部分实例可能不返回。 */
 export interface OutlineCollection {
@@ -56,17 +59,22 @@ export declare class OutlineClient {
     /** 请求并返回完整 JSON 响应体（data + pagination 等元数据）。 */
     private requestJson;
     private request;
-    searchDocuments(query: string, limit: number): Promise<OutlineSearchResult>;
+    searchDocuments(query: string, limit: number, collectionId?: string): Promise<OutlineSearchResult>;
     /** 统计 Outline 知识库文档总数（documents.list 分页 total；不含已删除/回收站文档）。 */
     countDocuments(filters?: Record<string, unknown>): Promise<number>;
     /** 列出当前 token 可见的集合（60s 缓存）。注：实例要求 collections.list 带查询串。 */
     listCollections(force?: boolean): Promise<OutlineCollection[]>;
-    /** 在指定集合创建文档（默认发布）。 */
+    /** 在指定集合创建文档（默认发布；可指定父文档实现嵌套）。 */
     createDocument(input: {
         collectionId: string;
         title: string;
         text: string;
         publish?: boolean;
+        parentDocumentId?: string;
     }): Promise<OutlineCreateResult>;
     getDocument(id: string): Promise<OutlineDocument>;
+    /** 列出某父文档下的直接子文档（用于路径定位；本地匹配名称，避免搜索分词歧义）。 */
+    listChildDocuments(parentDocumentId: string, limit?: number): Promise<OutlineSearchHit[]>;
+    /** 解析一个文档的完整路径：返回 [集合名, 顶级目录, …, 文档名]（自顶向下）。 */
+    resolveDocumentPath(docId: string): Promise<string[]>;
 }

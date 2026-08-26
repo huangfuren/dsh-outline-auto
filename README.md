@@ -87,7 +87,8 @@ Click **Save** — applies immediately. Alternatively, configure via environment
 | `outline_get_document(id, maxLength?)` | Fetch a document's full Markdown by id; `maxLength` caps the returned text (default 20000). |
 | `outline_count()` | Total number of documents in the knowledge base (`documents.list` total, exact; excludes trashed/deleted — the true total may be slightly higher). |
 | `outline_list_collections()` | List visible collections (id, name, permission, document count) — used to locate the target collection. |
-| `outline_create(collectionId, title, text, publish?)` | **Write** — create a document in a collection (default published). **Every call requires user approval** in the GUI; writes to protected collections are refused outright. |
+| `outline_resolve_path(path)` | Resolve a human path like `运维文档/个人笔记/随手记黄继晨` into `collectionId` + `parentDocumentId`; returns the resolved full path. Use it to locate the exact directory before creating. |
+| `outline_create(collectionId, title, text, publish?, parentDocumentId?)` | **Write** — create a document in a collection (default published; `parentDocumentId` nests it under a directory). **Every call requires user approval** showing the resolved full path; writes to protected collections are refused outright. |
 
 ## Development
 

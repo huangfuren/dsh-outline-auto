@@ -273,4 +273,47 @@ describe('OutlineClient', () => {
     await expect(client.createDocument({ collectionId: 'c', title: 'T', text: 'B' }))
       .rejects.toMatchObject({ kind: 'auth' })
   })
+
+  it('searchDocuments 支持 collectionId 过滤并映射 parentDocumentId', async () => {
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async (_url, init) => {
+        expect(JSON.parse(String(init.body))).toEqual({ query: 'x', limit: 5, collectionId: 'col-1' })
+        return {
+          status: 200,
+          body: {
+            data: [{ context: '', document: { id: 'd', title: 'T', url: '/doc/d', collectionId: 'col-1', parentDocumentId: 'p-1', updatedAt: '' } }],
+            pagination: { total: 1 },
+          },
+        }
+      }),
+    })
+    const { hits } = await client.searchDocuments('x', 5, 'col-1')
+    expect(hits[0].parentDocumentId).toBe('p-1')
+  })
+
+  it('resolveDocumentPath 沿父链解析完整路径（含集合名）', async () => {
+    const docs = new Map<string, any>([
+      ['leaf', { id: 'leaf', title: '叶子', url: '/doc/leaf', text: '', updatedAt: '', collectionId: 'col-1', parentDocumentId: 'mid' }],
+      ['mid', { id: 'mid', title: '中层', url: '/doc/mid', text: '', updatedAt: '', collectionId: 'col-1', parentDocumentId: 'root' }],
+      ['root', { id: 'root', title: '根目录', url: '/doc/root', text: '', updatedAt: '', collectionId: 'col-1' }],
+    ])
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async (url, init) => {
+        if (String(url).includes('/api/collections.list')) {
+          return { status: 200, body: { data: [{ id: 'col-1', name: '运维集合', permission: 'read_write' }] } }
+        }
+        const body = JSON.parse(String(init.body)) as { id?: string }
+        const doc = docs.get(body.id ?? '')
+        return doc === undefined
+          ? { status: 404, body: {} }
+          : { status: 200, body: { data: doc } }
+      }),
+    })
+    const path = await client.resolveDocumentPath('leaf')
+    expect(path).toEqual(['运维集合', '根目录', '中层', '叶子'])
+  })
 })
