@@ -17,7 +17,7 @@ const ctx = {
   tools: { register: (definition) => { tools.push(definition) } },
   inject: () => () => {},
   on: () => () => {},
-  approval: { request: async () => 'allowed-once' },
+  get: (name) => name === 'approval' ? { request: async () => 'allowed-once' } : undefined,
 }
 apply(ctx, { baseUrl, apiToken: 'test-token', timeoutMs: 5000, searchLimit: 5 })
 const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool]))

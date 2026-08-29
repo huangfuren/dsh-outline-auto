@@ -21,13 +21,13 @@ window.__ModuleLoader__.load({
 		// 与官方卡片一致的中文/英文文案（对齐 ui-settings-plugins locales）
 		const zh = {
 			cardTitle: "Outline 知识库",
-			cardDescription: "在对话中搜索 / 读取公司 Outline 知识库文档。",
+			cardDescription: "在对话中搜索 / 读取你的 Outline 知识库文档。",
 			baseUrl: "服务地址 (baseUrl)",
 			baseUrlHint: "Outline 实例根地址，如 https://outline.example.com",
 			apiToken: "API Token",
 			apiTokenHint: "Outline 设置 → API 密钥 中生成",
 			protectedCollections: "受保护集合（禁止写入）",
-			protectedCollectionsHint: "逗号分隔集合名，如 内部集合；留空则只有默认值（内部集合）",
+			protectedCollectionsHint: "逗号分隔集合名；留空表示不额外按名称保护集合。写操作仍需审批。",
 			overridden: "已覆盖",
 			reset: "恢复默认",
 			save: "保存",
@@ -42,13 +42,13 @@ window.__ModuleLoader__.load({
 		};
 		const en = {
 			cardTitle: "Outline Knowledge Base",
-			cardDescription: "Search / read company Outline knowledge base documents from conversations.",
+			cardDescription: "Search / read your Outline knowledge base documents from conversations.",
 			baseUrl: "Service URL (baseUrl)",
 			baseUrlHint: "Outline instance root, e.g. https://outline.example.com",
 			apiToken: "API Token",
 			apiTokenHint: "Create one at Outline Settings → API keys",
 			protectedCollections: "Protected collections (writes forbidden)",
-			protectedCollectionsHint: "Comma-separated collection names, e.g. 内部集合; empty falls back to the default (内部集合)",
+			protectedCollectionsHint: "Comma-separated collection names; empty means no additional name-based protection. Writes still require approval.",
 			overridden: "Overridden",
 			reset: "Reset",
 			save: "Save",

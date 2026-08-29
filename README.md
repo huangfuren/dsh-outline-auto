@@ -2,71 +2,75 @@
 
 [简体中文](./README.zh-CN.md)
 
-A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getoutline.com/) knowledge base from your conversation. Give it a keyword — it returns matching documents with **titles, snippets, and links**; ask for one of them and it returns the **full content in Markdown**. Read-only: it never modifies your document sources or sync pipeline.
+A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getoutline.com/) knowledge base from your conversation. Give it a keyword — it returns matching documents with **titles, snippets, and links**; ask for one of them and it returns the **full content in Markdown**. Approved write tools can create, update, and delete documents, with an approval prompt before every write.
 
-> Project status: 0.1.0. The current feature set is implemented and covered by unit tests, a Mock-server smoke, and a settings-chain integration check; cross-version compatibility beyond the development environment is not yet certified.
+> Project status: 0.2.2. The current feature set is covered by unit tests, a Mock-server smoke, and a settings-chain integration check. The supported DSH baseline is `0.1.1-rc.2`; older Harness builds are not certified.
 
 
 ## The core idea
 
 - The knowledge base is one search away: **you give a keyword, it gives you document links**.
-- Read-only by design: the plugin only queries Outline, it never writes to your documents.
+- Read operations are available without write access; write operations are separately approved by the user.
 - Each user brings their own credentials: **fill in the card in the GUI, no config files**.
 - Setup per team member is the same three steps: install → restart → configure.
 
 ## Features
 
-- **Two tools** (`outline_search(query, limit?)` / `outline_get_document(id, maxLength?)`) — keyword search returns titles, snippets, document ids and links; document fetch returns full Markdown (length-capable).
+- **Ten tools** — search, read, count, list collections, resolve paths, list children, return a document template, create, update, and delete.
 - **Clickable results** — document links are resolved to absolute URLs against your `baseUrl` (Outline returns relative paths); snippets and titles are cleaned of HTML tags so results render cleanly in chat.
 - **Document read cache (60s TTL)** — re-reading the same document within a session does not hit the API again.
 - **GUI configuration card** — Settings → Plugins → plugin configuration, an **Outline Knowledge Base** card matching the official card UI; fill in `baseUrl` and API token, click save, done.
 - **Per-user credentials** — every user configures their own token in the GUI (stored under `$DSH_HOME/settings.yaml`, never in git); ideal for team distribution.
 - **Safe when unconfigured** — the plugin loads normally and tools return clear Chinese error messages; the GUI is never blocked.
 - **Live updates** — saving the card applies immediately, no restart; configuration priority: GUI card → environment variables → plugin config row.
-- **Enable/disable** — listed in Settings → Plugins → plugin list; one commented line in `cordis.patch.yml` toggles it with hot reload.
-- **Ready to distribute** — install from GitHub in one command; recipients need no build step (DSH resolves `@deepseek-ai/*` at runtime) and no junction.
+- **Enable/disable** — listed in Settings → Plugins → Plugin list after the host entry is active; the configuration card is under Settings → Plugins → Plugin configuration.
+- **Ready to distribute** — install from a GitLab repository or archive after the release checklist below passes. Recipients should use the DSH plugin installer instead of manually editing profile bundles.
 
 ## Requirements
 
 | Component | Baseline |
 | --- | --- |
 | Node.js | 22.13 or newer |
-| DeepSeek Harness | tested against `0.1.1-rc.2` |
+| DeepSeek Harness | `0.1.1-rc.2` (required baseline) |
 | Outline instance | reachable from your machine (intranet / VPN), with an API token (Outline → Settings → API keys) |
 
 ## Installation
 
-### Default: AI-assisted hot install (no restart)
+### Recommended: DSH-managed install
 
-Just give your AI assistant the GitHub link — it can install for you with two commands:
-
-```bash
-git clone https://github.com/huangfuren/dsh-outline-auto.git ~/.dsh/plugins/dsh-outline-auto
-node ~/.dsh/plugins/dsh-outline-auto/scripts/hot-install.mjs
-```
-
-You can also run them yourself in a terminal. The script links the plugin into your profile and appends an insert row to `cordis.patch.yml`, which DSH hot-reloads: the host half (tools) works **immediately**, and the settings card appears after a browser page refresh — **no `dsh web` restart needed**. Uninstall: `node ~/.dsh/plugins/dsh-outline-auto/scripts/hot-install.mjs --remove`.
-
-> The plugin is linked from the clone location — keep it in a stable path (e.g. `~/.dsh/plugins/dsh-outline-auto`); the script warns if it detects a temporary directory.
-
-**Updating an existing install** — give the GitHub link to your AI assistant (or run it yourself):
+Install the GitLab repository as a web profile dependency. Replace the placeholder with the repository URL that you publish:
 
 ```bash
-node ~/.dsh/plugins/dsh-outline-auto/scripts/hot-install.mjs --update   # git pull + guidance
+dsh plugin --profile web add git+https://gitlab.example.com/<group>/dsh-outline-auto.git
 ```
 
-After the pull, the **settings card updates on a browser page refresh**; the **tools (host half) require a `dsh web` restart** — DSH does not yet hot-reload host plugin code (module-level HMR is disabled in the web composition).
+Restart `dsh web` after installation. The command updates the profile manifest and activates the package's `dsh.bundle` patch. Do not add a second manual `insert` row: duplicate loader ids can prevent the Harness from starting.
 
-### Traditional install (requires a restart)
+For a local checkout or extracted archive:
 
 ```bash
-dsh plugin --profile web add link:/path/to/dsh-outline-auto        # development, live source
-dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.git   # published
+dsh plugin --profile web add link:/absolute/path/to/dsh-outline-auto
 ```
 
-Restart `dsh web` after installing (the host half loads at startup; the client half registers the settings card).
+The directory must contain `package.json`, `lib/index.js`, `client.js`, `cordis.patch.yml`, and `dsh.plugin.json`. Build the package before distributing an archive:
 
-> Distributing as a zip? Exclude `node_modules` and `.git` — recipients need no junction.
+```bash
+pnpm build
+```
+
+### Legacy hot-install script
+
+The `scripts/hot-install.mjs` flow is intended for local development only. It creates a profile link and a patch row, so keep the checkout in a stable directory. Do not use it as the public distribution instructions.
+
+### Recovery after a failed install
+
+```bash
+dsh plugin --profile web why dsh-outline-auto
+```
+
+If startup reports that it cannot resolve `dsh-outline-ai`, an older renamed entry remains in `%USERPROFILE%/.dsh/profiles/web/package.json` or the profile `cordis.patch.yml`. Remove that stale dependency or insert row, then run the recommended install command again. Do not rename the current package back to the old id.
+
+If the package loads but the card is absent, restart `dsh web`, open Settings → Plugins, check **Plugin list** for `dsh-outline-auto`, then check **Plugin configuration**. A failed host entry will not expose its settings namespace.
 
 ## Configuration
 
@@ -79,6 +83,8 @@ The recommended way is the **GUI card** (Settings → Plugins → plugin configu
 
 Click **Save** — applies immediately. Alternatively, configure via environment variables (`OUTLINE_BASE_URL` / `OUTLINE_API_TOKEN`) or the plugin config row in `cordis.patch.yml`.
 
+The public package must not contain organization-specific collection names, URLs, tokens, or document examples. `protectedCollections` is deployment configuration: each installation must set its own comma-separated protected collection names. Never publish an internal collection name as a schema default or UI placeholder.
+
 ## Tools
 
 | Tool | Description |
@@ -87,18 +93,26 @@ Click **Save** — applies immediately. Alternatively, configure via environment
 | `outline_get_document(id, maxLength?)` | Fetch a document's full Markdown by id; `maxLength` caps the returned text (default 20000). |
 | `outline_count()` | Total number of documents in the knowledge base (`documents.list` total, exact; excludes trashed/deleted — the true total may be slightly higher). |
 | `outline_list_collections()` | List visible collections (id, name, permission, document count). |
-| `outline_resolve_path(path)` | Resolve a human path like `运维文档/目录A/子目录` into `collectionId` + `parentDocumentId`; returns the resolved full path. |
+| `outline_resolve_path(path)` | Resolve a human path like `Knowledge Base/Directory A/Subdirectory` into `collectionId` + `parentDocumentId`; returns the resolved full path. |
 | `outline_list_children(parentId)` | List direct child documents of a directory (parent document). |
 | `outline_doc_template()` | Return the standard requirement-document template (Markdown) + required section list — call it before writing a requirement doc. |
 | `outline_create(collectionId, title, text, publish?, parentDocumentId?)` | **Write** — create a document (default published; nest under a directory via `parentDocumentId`). **Requires approval** showing the resolved full path. |
 | `outline_update_document(id, title?, text?)` | **Write** — update a document's title/body. **Requires approval** showing the document path. |
 | `outline_delete(id)` | **Write, irreversible** — delete a document. **Double approval**: a first prompt, then a second confirmation before deletion. |
 
-> Writes are refused in **protected collections** (configurable in the settings card, comma-separated; default `内部集合`).
+> Writes are refused in **protected collections** configured by each deployment. The public package must ship with no organization-specific default.
 
 ### Workflow: writing a requirement document (common task)
 
 See the full SOP: [`docs/workflow-requirement-doc.zh.md`](docs/workflow-requirement-doc.zh.md) — locate the directory (`outline_resolve_path`) → fetch the template (`outline_doc_template`) → draft → create with approval → verify.
+
+## Release checklist
+
+- Verify the package with the exact supported DSH baseline and Node.js baseline.
+- Run `pnpm typecheck`, `pnpm build`, `pnpm test`, and `node scripts/smoke.mjs`.
+- Inspect the archive contents: include built `lib/`, `client.js`, both manifests, the patch, and public documentation; exclude `node_modules`, `.git`, settings files, tokens, internal URLs, and internal document names.
+- Install the archive or GitLab URL into a clean `web` profile and confirm both Settings -> Plugins -> Plugin list and Plugin configuration.
+- Search the release tree for organization-specific names before publishing. A failed check blocks the release.
 
 ## Development
 

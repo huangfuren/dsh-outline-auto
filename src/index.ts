@@ -38,7 +38,7 @@ export function apply(ctx: Context, config: Config = {} as Config) {
     return new OutlineClient({ baseUrl, apiToken, timeoutMs: config.timeoutMs ?? 15000 })
   }
 
-  // 受保护集合：settings 用户层 → 插件配置 → 默认 ['内部集合']
+  // 受保护集合：settings 用户层 → 插件配置 → 脱敏的空默认值。
   const getProtected = (): string[] => {
     const s = settingsSource()
     const raw = (s.protectedCollections ?? config.protectedCollections ?? FORBIDDEN_WRITE_COLLECTIONS.join(','))
@@ -62,7 +62,9 @@ export function apply(ctx: Context, config: Config = {} as Config) {
   ctx.tools.register(outlineCreateTool(makeClient, getProtected))
   ctx.tools.register(outlineUpdateDocumentTool(makeClient, getProtected))
   ctx.tools.register(outlineDeleteTool(makeClient, getProtected, async (reason, exec) => {
-    const outcome = await ctx.approval.request({
+    const approval = ctx.get('approval')
+    if (approval === undefined) return false
+    const outcome = await approval.request({
       agent: exec.agent as never,
       toolName: 'outline_delete',
       callId: exec.callId as never,
@@ -85,6 +87,8 @@ export function apply(ctx: Context, config: Config = {} as Config) {
         collections = await makeClient().listCollections()
         collectionName = collections.find((c) => c.id === a.collectionId)?.name
       } catch {
+        // Keep collections empty: resolveWriteGuard fails closed when it cannot
+        // verify the target instead of allowing a write on a network error.
         collectionName = undefined
       }
       if (a.parentDocumentId !== undefined && a.parentDocumentId !== '') {
@@ -111,7 +115,13 @@ export function apply(ctx: Context, config: Config = {} as Config) {
       } catch {
         // 解析失败仍继续走 ask（reason 里看不到路径也至少让用户确认操作）
       }
-      const guard = resolveWriteGuard(await makeClient().listCollections().catch(() => []), collectionId ?? '', getProtected())
+      let collections: OutlineCollection[] = []
+      try {
+        collections = await makeClient().listCollections()
+      } catch {
+        // resolveWriteGuard deliberately denies an unverifiable target.
+      }
+      const guard = resolveWriteGuard(collections, collectionId ?? '', getProtected())
       if (guard !== null) return { kind: 'deny', reason: guard }
       const where = docPath !== undefined && docPath.length > 0 ? `路径：${docPath.join(' / ')}` : `文档 id：${id}`
       if (name === 'outline_update_document') {

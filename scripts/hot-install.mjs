@@ -20,6 +20,8 @@ const PLUGIN_DIR = resolve(HERE, '..')
 const PKG = JSON.parse(readFileSync(join(PLUGIN_DIR, 'package.json'), 'utf8'))
 const PACKAGE_NAME = PKG.name // dsh-outline-auto
 const ROW_ID = 'outline-auto'
+const LEGACY_PACKAGE_NAME = 'dsh-outline-ai'
+const LEGACY_ROW_ID = 'outline-ai'
 const INSERT_BLOCK = `- insert:\n    - id: ${ROW_ID}\n      name: '${PACKAGE_NAME}'\n`
 
 const args = process.argv.slice(2)
@@ -68,6 +70,53 @@ function readProfileManifest() {
     return JSON.parse(readFileSync(manifestPath, 'utf8'))
   } catch {
     return null
+  }
+}
+
+/** Remove the old package name that otherwise makes dsh fail before the web UI starts. */
+function migrateLegacyInstall() {
+  const manifest = readProfileManifest()
+  if (manifest !== null) {
+    let changed = false
+    const bundles = manifest.dsh?.profile?.bundles
+    if (Array.isArray(bundles) && bundles.includes(LEGACY_PACKAGE_NAME)) {
+      manifest.dsh.profile.bundles = bundles.filter((name) => name !== LEGACY_PACKAGE_NAME)
+      changed = true
+    }
+    const dependencies = manifest.dependencies
+    if (dependencies !== null && typeof dependencies === 'object' && Object.hasOwn(dependencies, LEGACY_PACKAGE_NAME)) {
+      delete dependencies[LEGACY_PACKAGE_NAME]
+      changed = true
+    }
+    if (changed) {
+      writeFileSync(join(profileDir, 'package.json'), JSON.stringify(manifest, null, 2) + '\n')
+      console.log(`[迁移] 已移除旧 profile 依赖 ${LEGACY_PACKAGE_NAME}，避免启动时解析失败`)
+    }
+  }
+
+  const patch = readPatch()
+  const lines = patch.split('\n')
+  const cleaned = []
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i]
+    const next = lines[i + 1] ?? ''
+    const following = lines[i + 2] ?? ''
+    const oldInsert = line.trim() === '- insert:'
+      && next.includes(`id: ${LEGACY_ROW_ID}`)
+      && following.includes(`name: '${LEGACY_PACKAGE_NAME}'`)
+    if (oldInsert) {
+      i += 2
+      continue
+    }
+    cleaned.push(line)
+  }
+  const nextPatch = cleaned.join('\n')
+  if (nextPatch !== patch) {
+    writeFileSync(patchPath, nextPatch)
+    console.log(`[迁移] 已移除 cordis.patch.yml 中的旧插件行 ${LEGACY_ROW_ID}`)
+  }
+  if (removeLink(join(nmDir, LEGACY_PACKAGE_NAME))) {
+    console.log(`[迁移] 已移除旧插件链接 node_modules/${LEGACY_PACKAGE_NAME}`)
   }
 }
 
@@ -122,7 +171,7 @@ function install() {
   if (looksTemporary) {
     console.log('')
     console.log(`⚠️  插件当前位于临时目录（${PLUGIN_DIR}），删除该目录后插件将失效。`)
-    console.log(`   建议克隆到稳定位置后重新安装：git clone https://github.com/huangfuren/dsh-outline-auto.git ${STABLE_CLONE_DIR}`)
+    console.log(`   建议把插件目录移到稳定位置（如 ${STABLE_CLONE_DIR}）后重新安装。`)
   }
 }
 
@@ -180,5 +229,6 @@ if (remove) {
   updatePlugin()
 } else {
   console.log(`dsh-outline-auto 热安装 → profile: ${profile}`)
+  migrateLegacyInstall()
   install()
 }

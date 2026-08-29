@@ -11,7 +11,7 @@ export declare function buildCreateApprovalReason(args: {
     title?: string;
     text?: string;
 }, collectionName?: string, resolvedPath?: string[]): string;
-/** 默认受保护集合（settings 未配置时的兜底）。 */
+/** 默认受保护集合（发布包不携带任何组织专属名称）。 */
 export declare const FORBIDDEN_WRITE_COLLECTIONS: readonly string[];
 /** 写工具守卫来源：返回当前受保护集合名列表。 */
 export interface WriteGuards {
@@ -25,8 +25,8 @@ export declare const REQUIREMENT_DOC_TEMPLATE: string;
 export declare const REQUIREMENT_DOC_SECTIONS: string[];
 export declare function outlineDocTemplateTool(): import("@deepseek-ai/dsh-tools").ToolDefinition;
 /**
- * 写入守卫：按集合名判断是否允许写入（创建/更新/删除）。
- * @returns 禁止时返回错误提示文案；允许时返回 null。
+ * 写入守卫：必须确认集合存在且 token 有写权限，再检查受保护名称。
+ * @returns 禁止或无法确认时返回错误提示文案；允许时返回 null。
  */
 export declare function resolveWriteGuard(collections: OutlineCollection[], collectionId: string, protectedList: string[]): string | null;
 export declare function outlineResolvePathTool(makeClient: () => OutlineClient): import("@deepseek-ai/dsh-tools").ToolDefinition;

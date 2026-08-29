@@ -30,7 +30,7 @@ export function createMockOutlineServer() {
       if (req.url === '/api/documents.info') {
         const doc = DOCS.find((d) => d.id === parsed.id)
         if (!doc) { send(404, { ok: false, error: 'not_found' }); return }
-        send(200, { data: { id: doc.id, title: doc.title, url: doc.url, text: doc.text, updatedAt: doc.updatedAt } })
+        send(200, { data: { id: doc.id, title: doc.title, url: doc.url, text: doc.text, updatedAt: doc.updatedAt, collectionId: doc.collectionId, parentDocumentId: doc.parentDocumentId } })
         return
       }
       if (req.url === '/api/documents.list') {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool, outlineResolvePathTool, outlineCreateTool, outlineUpdateDocumentTool, outlineDeleteTool, outlineListChildrenTool, outlineDocTemplateTool, buildCreateApprovalReason, resolveWriteGuard } from '../src/tools.js'
+import { outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool, outlineResolvePathTool, outlineCreateTool, outlineUpdateDocumentTool, outlineDeleteTool, outlineListChildrenTool, outlineDocTemplateTool, buildCreateApprovalReason, resolveWriteGuard, FORBIDDEN_WRITE_COLLECTIONS } from '../src/tools.js'
 import { OutlineApiError } from '../src/errors.js'
 import type { OutlineClient } from '../src/client.js'
 
@@ -77,28 +77,34 @@ describe('outline_create', () => {
     const tool = outlineCreateTool(() => fakeClient({
       listCollections: async () => [{ id: 'col-1', name: '测试集合', permission: 'read_write' }],
       createDocument: async (input) => { seen = input; return { id: 'd1', url: 'https://outline.example.com/doc/d1', title: input.title, published: true } },
-    }), () => ['内部集合'])
+    }), () => ['受保护集合'])
     const result = await tool.execute({ collectionId: 'col-1', title: 'T', text: 'B', parentDocumentId: 'parent-1' }, exec) as any
     expect(seen).toEqual({ collectionId: 'col-1', parentDocumentId: 'parent-1', title: 'T', text: 'B', publish: undefined })
     expect(result.url).toContain('doc/d1')
   })
 
   it('execute 拒绝向受保护集合写入', async () => {
-    const tool = outlineCreateTool(() => fakeClient({ listCollections: async () => [{ id: 'ops', name: '内部集合', permission: 'read_write' }] }), () => ['内部集合'])
+    const tool = outlineCreateTool(() => fakeClient({ listCollections: async () => [{ id: 'ops', name: '受保护集合', permission: 'read_write' }] }), () => ['受保护集合'])
     await expect(tool.execute({ collectionId: 'ops', title: 'T', text: 'B' }, exec)).rejects.toThrow('禁止')
   })
 })
 
 describe('resolveWriteGuard', () => {
   it('禁止在受保护集合写入', () => {
-    const err = resolveWriteGuard([{ id: 'c1', name: '内部集合', permission: 'read_write' }], 'c1', ['内部集合'])
+    const err = resolveWriteGuard([{ id: 'c1', name: '受保护集合', permission: 'read_write' }], 'c1', ['受保护集合'])
     expect(err).toContain('禁止')
   })
   it('普通集合放行', () => {
-    expect(resolveWriteGuard([{ id: 'c2', name: '测试集合', permission: 'read_write' }], 'c2', ['内部集合'])).toBeNull()
+    expect(resolveWriteGuard([{ id: 'c2', name: '测试集合', permission: 'read_write' }], 'c2', ['受保护集合'])).toBeNull()
   })
-  it('集合名未知时放行（id 兜底）', () => {
-    expect(resolveWriteGuard([], 'c9', ['内部集合'])).toBeNull()
+  it('集合不可确认时拒绝写入（失败关闭）', () => {
+    expect(resolveWriteGuard([], 'c9', ['受保护集合'])).toContain('无法确认')
+  })
+  it('只读权限集合拒绝写入', () => {
+    expect(resolveWriteGuard([{ id: 'c3', name: '只读集合', permission: 'read_only' }], 'c3', [])).toContain('禁止')
+  })
+  it('发布包默认不包含组织专属保护名称', () => {
+    expect(FORBIDDEN_WRITE_COLLECTIONS).toEqual([])
   })
 })
 
@@ -111,11 +117,11 @@ describe('outline_resolve_path', () => {
         return { total: 0, hits: [] }
       },
       listChildDocuments: async (parentId: string) => parentId === 'root-1'
-        ? [{ id: 'leaf-1', title: '随手记-黄继晨', url: '/d', snippet: '', collectionId: 'col-1', updatedAt: '', parentDocumentId: 'root-1' }]
+        ? [{ id: 'leaf-1', title: '随手记-张三', url: '/d', snippet: '', collectionId: 'col-1', updatedAt: '', parentDocumentId: 'root-1' }]
         : [],
     }))
-    const result = await tool.execute({ path: '运维集合/个人笔记/随手记黄继晨' }, exec) as any
-    expect(result).toMatchObject({ collectionId: 'col-1', parentDocumentId: 'leaf-1', path: ['运维集合', '《个人笔记》', '随手记-黄继晨'] })
+    const result = await tool.execute({ path: '运维集合/个人笔记/随手记张三' }, exec) as any
+    expect(result).toMatchObject({ collectionId: 'col-1', parentDocumentId: 'leaf-1', path: ['运维集合', '《个人笔记》', '随手记-张三'] })
   })
 
   it('集合不存在时报错并列出候选', async () => {
@@ -148,7 +154,7 @@ describe('outline_update_document', () => {
       getDocument: async () => ({ id: 'd1', title: '旧', url: '/d', text: 'x', updatedAt: '', collectionId: 'col-1' }),
       listCollections: async () => [{ id: 'col-1', name: '测试集合', permission: 'read_write' }],
       updateDocument: async (id, input) => { seen = { id, ...input }; return { id, url: '/doc/d1', title: input.title ?? '旧', published: true } },
-    }), () => ['内部集合'])
+    }), () => ['受保护集合'])
     const r = await tool.execute({ id: 'd1', title: '新标题' }, exec) as any
     expect(seen).toEqual({ id: 'd1', title: '新标题' })
     expect(r.title).toBe('新标题')
@@ -156,12 +162,12 @@ describe('outline_update_document', () => {
   it('受保护集合拒绝更新', async () => {
     const tool = outlineUpdateDocumentTool(() => fakeClient({
       getDocument: async () => ({ id: 'd1', title: 'T', url: '/d', text: 'x', updatedAt: '', collectionId: 'ops' }),
-      listCollections: async () => [{ id: 'ops', name: '内部集合', permission: 'read_write' }],
-    }), () => ['内部集合'])
+      listCollections: async () => [{ id: 'ops', name: '受保护集合', permission: 'read_write' }],
+    }), () => ['受保护集合'])
     await expect(tool.execute({ id: 'd1', text: 'x' }, exec)).rejects.toThrow('禁止')
   })
   it('至少需要 title 或 text', async () => {
-    const tool = outlineUpdateDocumentTool(() => fakeClient(), () => ['内部集合'])
+    const tool = outlineUpdateDocumentTool(() => fakeClient(), () => ['受保护集合'])
     await expect(tool.execute({ id: 'd1' }, exec)).rejects.toThrow('至少需要')
   })
 })
@@ -174,7 +180,7 @@ describe('outline_delete', () => {
       listCollections: async () => [{ id: 'col-1', name: '测试集合', permission: 'read_write' }],
       resolveDocumentPath: async () => ['测试集合', 'T'],
       deleteDocument: async () => ({ success: true }),
-    }), () => ['内部集合'], async (reason, _exec) => { asked = reason; return true })
+    }), () => ['受保护集合'], async (reason, _exec) => { asked = reason; return true })
     const r = await tool.execute({ id: 'd1' }, exec) as any
     expect(asked).toContain('再次确认')
     expect(r.success).toBe(true)
@@ -184,7 +190,7 @@ describe('outline_delete', () => {
       getDocument: async () => ({ id: 'd1', title: 'T', url: '/d', text: 'x', updatedAt: '', collectionId: 'col-1' }),
       listCollections: async () => [{ id: 'col-1', name: '测试集合', permission: 'read_write' }],
       resolveDocumentPath: async () => ['测试集合', 'T'],
-    }), () => ['内部集合'], async () => false)
+    }), () => ['受保护集合'], async () => false)
     await expect(tool.execute({ id: 'd1' }, exec)).rejects.toThrow('取消')
   })
 })
