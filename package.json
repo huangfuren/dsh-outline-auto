@@ -1,9 +1,10 @@
 {
     "name": "dsh-outline-auto",
     "version": "0.3.0",
-    "description": "DSH web plugin: search and read an Outline knowledge base from conversations, with approved document writes.",
+    "description": "DSH web plugin: search and read an Outline knowledge base from conversations, with approved, whitelist-guarded document writes.",
     "type": "module",
     "license": "MIT",
+    "author": "huangfuren",
     "main": "lib/index.js",
     "types": "lib/index.d.ts",
     "files": [
@@ -13,11 +14,31 @@
         "cordis.patch.yml",
         "dsh.plugin.json",
         "README.md",
-        "README.zh-CN.md"
+        "README.zh-CN.md",
+        "CHANGELOG.md"
+    ],
+    "keywords": [
+        "deepseek",
+        "harness",
+        "dsh",
+        "dsh-plugin",
+        "outline",
+        "knowledge-base"
     ],
     "engines": {
         "node": ">=22.13",
         "dsh": ">=0.1.1-rc.2 <0.2.0"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/huangfuren/dsh-outline-auto.git"
+    },
+    "homepage": "https://github.com/huangfuren/dsh-outline-auto#readme",
+    "bugs": {
+        "url": "https://github.com/huangfuren/dsh-outline-auto/issues"
+    },
+    "publishConfig": {
+        "access": "public"
     },
     "exports": {
         ".": "./lib/index.js",
@@ -42,6 +63,7 @@
         "typecheck": "tsc --noEmit",
         "test": "vitest run",
         "smoke": "node scripts/smoke.mjs",
+        "verify": "pnpm typecheck && pnpm test && node scripts/smoke.mjs",
         "prepack": "pnpm build"
     },
     "dependencies": {
