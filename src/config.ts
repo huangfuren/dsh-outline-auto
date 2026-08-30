@@ -12,6 +12,8 @@ export interface Config {
   searchLimit: number
   /** 可写目录路径（逗号分隔）：仅这些目录及其全部子级允许创建/更新/删除文档；留空 = 全库只读（默认） */
   writablePaths?: string
+  /** 读取缓存有效期（毫秒），默认 60000，范围 1000~300000 */
+  cacheTtlMs?: number
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -20,6 +22,7 @@ export const Config: Schema<Config> = Schema.object({
   timeoutMs: Schema.number().min(1000).default(15000).description('HTTP 请求超时（毫秒）'),
   searchLimit: Schema.number().min(1).max(25).default(10).description('outline_search 默认返回条数'),
   writablePaths: Schema.string().default('').description('可写目录路径（逗号分隔），如 集合A,集合B/目录1；留空 = 全库只读（默认）'),
+  cacheTtlMs: Schema.number().min(1000).max(300000).default(60000).description('读取缓存有效期（毫秒），默认 60000'),
 })
 
 export type { Context }

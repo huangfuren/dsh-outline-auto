@@ -11,6 +11,8 @@ export interface Config {
     searchLimit: number;
     /** 可写目录路径（逗号分隔）：仅这些目录及其全部子级允许创建/更新/删除文档；留空 = 全库只读（默认） */
     writablePaths?: string;
+    /** 读取缓存有效期（毫秒），默认 60000，范围 1000~300000 */
+    cacheTtlMs?: number;
 }
 export declare const Config: Schema<Config>;
 export type { Context };

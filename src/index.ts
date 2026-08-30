@@ -40,9 +40,10 @@ export function apply(ctx: Context, config: Config = {} as Config) {
       )
     }
     const timeoutMs = config.timeoutMs ?? 15000
-    const key = `${baseUrl}\u0000${apiToken}\u0000${timeoutMs}`
+    const cacheTtlMs = config.cacheTtlMs ?? 60000
+    const key = `${baseUrl}\u0000${apiToken}\u0000${timeoutMs}\u0000${cacheTtlMs}`
     if (cachedClient !== null && cachedClient.key === key) return cachedClient.client
-    const client = new OutlineClient({ baseUrl, apiToken, timeoutMs })
+    const client = new OutlineClient({ baseUrl, apiToken, timeoutMs, cacheTtlMs })
     cachedClient = { key, client }
     return client
   }

@@ -39,19 +39,27 @@ export interface OutlineClientOptions {
     baseUrl: string;
     apiToken: string;
     timeoutMs?: number;
+    cacheTtlMs?: number;
     fetchImpl?: typeof fetch;
 }
 export declare class OutlineClient {
     private readonly fetchImpl;
     private readonly timeoutMs;
+    private readonly cacheTtlMs;
     private readonly baseUrl;
     private readonly apiToken;
     /** getDocument 的短期缓存（key = 文档 id），避免会话内重复读取同一文档反复请求 API。 */
     private readonly docCache;
-    private static readonly DOC_CACHE_TTL_MS;
+    private static readonly DEFAULT_CACHE_TTL_MS;
+    /** 文档缓存条数上限：超限时按插入顺序淘汰最旧条目，防止长时间运行内存膨胀。 */
+    private static readonly DOC_CACHE_MAX_ENTRIES;
+    /** 429 限流自动重试次数（指数退避，每次最多退避 5 秒）。 */
+    private static readonly MAX_RETRIES;
     /** listCollections 的短期缓存，供审批钩子解析集合名。 */
     private collectionsCache;
     constructor(options: OutlineClientOptions);
+    /** 安全校验：拒绝公网明文 http（避免 Token 明文传输），允许 https 以及本地/内网私有地址。 */
+    private assertAllowedUrl;
     /** 去掉 Outline 片段/标题里的 HTML 标签（如 <b>），避免原样渲染进聊天。 */
     private static stripHtml;
     /** 把 Outline API 返回的相对文档路径（如 /doc/xxx）解析为可点击的绝对地址。 */
@@ -65,7 +73,7 @@ export declare class OutlineClient {
     }, offset?: number): Promise<OutlineSearchResult>;
     /** 统计 Outline 知识库文档总数（documents.list 分页 total；不含已删除/回收站文档）。 */
     countDocuments(filters?: Record<string, unknown>): Promise<number>;
-    /** 列出当前 token 可见的集合（60s 缓存）。注：实例要求 collections.list 带查询串。 */
+    /** 列出当前 token 可见的集合（短期缓存）。注：实例要求 collections.list 带查询串。 */
     listCollections(force?: boolean): Promise<OutlineCollection[]>;
     /** 在指定集合创建文档（默认发布；可指定父文档实现嵌套）。 */
     createDocument(input: {

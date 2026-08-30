@@ -46,25 +46,57 @@ export interface OutlineClientOptions {
   baseUrl: string
   apiToken: string
   timeoutMs?: number
+  cacheTtlMs?: number
   fetchImpl?: typeof fetch
 }
 
 export class OutlineClient {
   private readonly fetchImpl: typeof fetch
   private readonly timeoutMs: number
+  private readonly cacheTtlMs: number
   private readonly baseUrl: string
   private readonly apiToken: string
   /** getDocument 的短期缓存（key = 文档 id），避免会话内重复读取同一文档反复请求 API。 */
   private readonly docCache = new Map<string, { expires: number; doc: OutlineDocument }>()
-  private static readonly DOC_CACHE_TTL_MS = 60_000
+  private static readonly DEFAULT_CACHE_TTL_MS = 60_000
+  /** 文档缓存条数上限：超限时按插入顺序淘汰最旧条目，防止长时间运行内存膨胀。 */
+  private static readonly DOC_CACHE_MAX_ENTRIES = 200
+  /** 429 限流自动重试次数（指数退避，每次最多退避 5 秒）。 */
+  private static readonly MAX_RETRIES = 3
   /** listCollections 的短期缓存，供审批钩子解析集合名。 */
   private collectionsCache: { expires: number; collections: OutlineCollection[] } | null = null
 
   constructor(options: OutlineClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '')
+    this.assertAllowedUrl(this.baseUrl)
     this.apiToken = options.apiToken
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch
     this.timeoutMs = options.timeoutMs ?? 15000
+    this.cacheTtlMs = options.cacheTtlMs ?? OutlineClient.DEFAULT_CACHE_TTL_MS
+  }
+
+  /** 安全校验：拒绝公网明文 http（避免 Token 明文传输），允许 https 以及本地/内网私有地址。 */
+  private assertAllowedUrl(baseUrl: string): void {
+    let parsed: URL
+    try {
+      parsed = new URL(baseUrl)
+    } catch {
+      throw new Error(`dsh-outline-auto 的 baseUrl 无法解析：${baseUrl}。请填写合法的 Outline 根地址。`)
+    }
+    if (parsed.protocol === 'https:') return
+    const host = parsed.hostname
+    const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1'
+    const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+    const isPrivate = ipv4 !== null && (
+      Number(ipv4[1]) === 10
+      || (Number(ipv4[1]) === 172 && Number(ipv4[2]) >= 16 && Number(ipv4[2]) <= 31)
+      || (Number(ipv4[1]) === 192 && Number(ipv4[2]) === 168)
+      || Number(ipv4[1]) === 127
+    )
+    if (isLocal || isPrivate) return
+    throw new Error(
+      `dsh-outline-auto 拒绝非 HTTPS 地址：${baseUrl}。为避免 Token 明文传输，公网地址必须使用 https://（localhost 与内网私有地址除外）。`,
+    )
   }
 
   /** 去掉 Outline 片段/标题里的 HTML 标签（如 <b>），避免原样渲染进聊天。 */
@@ -87,7 +119,7 @@ export class OutlineClient {
   }
 
   /** 请求并返回完整 JSON 响应体（data + pagination 等元数据）。 */
-  private async requestJson(path: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  private async requestJson(path: string, body: Record<string, unknown>, retries = 0): Promise<Record<string, unknown>> {
     const url = `${this.baseUrl}${path}`
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), this.timeoutMs)
@@ -115,7 +147,18 @@ export class OutlineClient {
       clearTimeout(timer)
     }
     const bodyText = await response.text().catch(() => '')
-    if (!response.ok) throwForStatus(response.status, bodyText)
+    if (!response.ok) {
+      // 429 限流：指数退避自动重试（最多 3 次）；尊重 Retry-After，仍失败则抛出 rate-limited
+      if (response.status === 429 && retries < OutlineClient.MAX_RETRIES) {
+        const retryAfter = Number(response.headers?.get?.('retry-after') ?? '')
+        const delay = Number.isFinite(retryAfter) && retryAfter >= 0
+          ? Math.min(retryAfter * 1000, 5000)
+          : Math.min(500 * 2 ** retries, 5000)
+        await new Promise((resolve) => setTimeout(resolve, delay))
+        return this.requestJson(path, body, retries + 1)
+      }
+      throwForStatus(response.status, bodyText)
+    }
     let json: Record<string, unknown>
     try {
       json = JSON.parse(bodyText) as Record<string, unknown>
@@ -169,7 +212,7 @@ export class OutlineClient {
     return typeof pagination.total === 'number' ? pagination.total : 0
   }
 
-  /** 列出当前 token 可见的集合（60s 缓存）。注：实例要求 collections.list 带查询串。 */
+  /** 列出当前 token 可见的集合（短期缓存）。注：实例要求 collections.list 带查询串。 */
   async listCollections(force = false): Promise<OutlineCollection[]> {
     const cached = this.collectionsCache
     if (!force && cached !== null && cached !== undefined && cached.expires > Date.now()) return cached.collections
@@ -193,7 +236,7 @@ export class OutlineClient {
       if (data.length === 0) break
       if (collections.length >= total) break
     }
-    this.collectionsCache = { expires: Date.now() + OutlineClient.DOC_CACHE_TTL_MS, collections }
+    this.collectionsCache = { expires: Date.now() + this.cacheTtlMs, collections }
     return collections
   }
 
@@ -257,7 +300,12 @@ export class OutlineClient {
         ? { parentDocumentId: String(data.parentDocumentId) }
         : {}),
     }
-    this.docCache.set(id, { expires: Date.now() + OutlineClient.DOC_CACHE_TTL_MS, doc })
+    this.docCache.set(id, { expires: Date.now() + this.cacheTtlMs, doc })
+    // 超限时淘汰最旧条目（Map 保持插入顺序）
+    if (this.docCache.size > OutlineClient.DOC_CACHE_MAX_ENTRIES) {
+      const oldest = this.docCache.keys().next().value
+      if (oldest !== undefined) this.docCache.delete(oldest)
+    }
     return doc
   }
 

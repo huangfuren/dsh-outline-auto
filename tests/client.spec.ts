@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { OutlineClient } from '../src/client.js'
 import { OutlineApiError } from '../src/errors.js'
 
-type StubResponse = { status: number; body: unknown }
+type StubResponse = { status: number; body: unknown; headers?: Record<string, string> }
 
 function stubFetch(handler: (url: string, init: RequestInit) => Promise<StubResponse>): typeof fetch {
   return (async (url: any, init: any) => {
@@ -10,6 +10,7 @@ function stubFetch(handler: (url: string, init: RequestInit) => Promise<StubResp
     return {
       ok: r.status >= 200 && r.status < 300,
       status: r.status,
+      headers: { get: (name: string) => r.headers?.[name.toLowerCase()] ?? null },
       text: async () => JSON.stringify(r.body),
     } as unknown as Response
   }) as typeof fetch
@@ -455,5 +456,63 @@ describe('OutlineClient', () => {
     await client.deleteDocument('d1')
     await client.getDocument('d1')
     expect(calls).toBe(3)
+  })
+
+  it('429 限流自动重试成功后返回结果', async () => {
+    let calls = 0
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async () => {
+        calls += 1
+        if (calls <= 2) return { status: 429, body: { ok: false }, headers: { 'retry-after': '0' } }
+        return { status: 200, body: SEARCH_BODY }
+      }),
+    })
+    const { total } = await client.searchDocuments('部署', 5)
+    expect(total).toBe(1)
+    expect(calls).toBe(3)
+  })
+
+  it('429 超过重试次数仍抛 rate-limited', async () => {
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async () => ({ status: 429, body: {}, headers: { 'retry-after': '0' } })),
+    })
+    await expect(client.searchDocuments('x', 1)).rejects.toMatchObject({ kind: 'rate-limited' })
+  })
+
+  it('拒绝公网明文 http（https 校验）', () => {
+    expect(() => new OutlineClient({ baseUrl: 'http://outline.example.com', apiToken: 'tok' })).toThrow('非 HTTPS')
+    expect(() => new OutlineClient({ baseUrl: 'http://example.com', apiToken: 'tok' })).toThrow('非 HTTPS')
+  })
+
+  it('允许 https 地址', () => {
+    expect(() => new OutlineClient({ baseUrl: 'https://outline.example.com', apiToken: 'tok' })).not.toThrow()
+  })
+
+  it('允许 localhost / 127.0.0.1 / 内网私有地址的 http', () => {
+    expect(() => new OutlineClient({ baseUrl: 'http://127.0.0.1:3000', apiToken: 'tok' })).not.toThrow()
+    expect(() => new OutlineClient({ baseUrl: 'http://localhost:3000', apiToken: 'tok' })).not.toThrow()
+    expect(() => new OutlineClient({ baseUrl: 'http://10.0.0.5', apiToken: 'tok' })).not.toThrow()
+    expect(() => new OutlineClient({ baseUrl: 'http://172.16.0.1', apiToken: 'tok' })).not.toThrow()
+    expect(() => new OutlineClient({ baseUrl: 'http://192.168.1.10', apiToken: 'tok' })).not.toThrow()
+  })
+
+  it('cacheTtlMs 控制缓存有效期（过期后重新请求）', async () => {
+    let calls = 0
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      cacheTtlMs: 5,
+      fetchImpl: stubFetch(async () => { calls += 1; return { status: 200, body: INFO_BODY } }),
+    })
+    await client.getDocument('doc-1')
+    await client.getDocument('doc-1') // 未过期 → 命中缓存
+    expect(calls).toBe(1)
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    await client.getDocument('doc-1') // 已过期 → 重新请求
+    expect(calls).toBe(2)
   })
 })

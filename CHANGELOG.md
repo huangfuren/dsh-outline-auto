@@ -8,6 +8,14 @@ All notable changes to this project are documented here. Release-specific notes 
 
 - Placeholder for the next release.
 
+## [v0.4.0] - 2026-08-30
+
+### Added
+
+- **429 限流自动重试**：请求被限流时按 `Retry-After` 或指数退避自动重试（最多 3 次），重试后仍失败才报错。
+- **HTTPS 校验**：公网地址必须使用 `https://`（localhost 与内网私有地址除外），避免 Token 明文传输。
+- **可配置缓存 TTL**：新增 `cacheTtlMs` 配置（默认 60000，范围 1000–300000），文档与集合缓存有效期可调；文档缓存增加条目上限（200 条，超限淘汰最旧），防止长时间运行内存膨胀。
+
 ## [v0.3.1] - 2026-08-30
 
 ### Fixed
