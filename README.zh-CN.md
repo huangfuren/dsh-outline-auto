@@ -19,11 +19,13 @@ DeepSeek Harness 的 Outline 插件：在对话中搜索、读取并在用户审
 
 ### 推荐：DSH 管理安装
 
-把 GitLab 仓库作为 web profile 依赖安装，将示例地址替换为实际发布地址：
+从公开 GitHub 仓库安装，并固定到最新发布 tag：
 
 ```bash
-dsh plugin --profile web add git+https://gitlab.example.com/<group>/dsh-outline-auto.git
+dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.git#v0.3.0
 ```
+
+`#v0.3.0` 后缀固定到该发布版本；去掉后缀则跟随 `main` 分支最新提交。
 
 安装后重启 `dsh web`。该命令会更新 profile manifest 并激活插件的 `dsh.bundle` patch。不要再次手工添加同一个 `insert` 行，重复 Loader id 可能导致 Harness 启动失败。
 
@@ -74,7 +76,7 @@ dsh plugin --profile web why dsh-outline-auto
 - 使用 DSH `0.1.1-rc.2` 或更高的同一兼容范围测试；更早版本没有设置槽位和客户端注入兼容保证。
 - 执行 `pnpm typecheck`、`pnpm build`、`pnpm test` 和 `node scripts/smoke.mjs`。
 - 压缩包排除 `node_modules`、`.git`、settings 文件、token、内部地址和内部文档名称。
-- 在干净的 `web` profile 中安装 GitLab 地址或压缩包，确认插件列表和插件配置两个入口都可见。
+- 在干净的 `web` profile 中安装 GitHub 地址或压缩包，确认插件列表和插件配置两个入口都可见。
 - 发布前搜索整个发布目录中的组织专属名称；检查失败就停止发布。
 
 ## 工具

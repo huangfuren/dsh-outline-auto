@@ -24,7 +24,7 @@ A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getou
 - **Safe when unconfigured** — the plugin loads normally and tools return clear Chinese error messages; the GUI is never blocked.
 - **Live updates** — saving the card applies immediately, no restart; configuration priority: GUI card → environment variables → plugin config row.
 - **Enable/disable** — listed in Settings → Plugins → Plugin list after the host entry is active; the configuration card is under Settings → Plugins → Plugin configuration.
-- **Ready to distribute** — install from a GitLab repository or archive after the release checklist below passes. Recipients should use the DSH plugin installer instead of manually editing profile bundles.
+- **Ready to distribute** — install from the public GitHub repository or archive after the release checklist below passes. Recipients should use the DSH plugin installer instead of manually editing profile bundles.
 
 ## Requirements
 
@@ -38,11 +38,13 @@ A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getou
 
 ### Recommended: DSH-managed install
 
-Install the GitLab repository as a web profile dependency. Replace the placeholder with the repository URL that you publish:
+Install from the public GitHub repository, pinned to the latest release tag:
 
 ```bash
-dsh plugin --profile web add git+https://gitlab.example.com/<group>/dsh-outline-auto.git
+dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.git#v0.3.0
 ```
+
+The `#v0.3.0` suffix pins the exact release; omit it to track the latest commit on `main`.
 
 Restart `dsh web` after installation. The command updates the profile manifest and activates the package's `dsh.bundle` patch. Do not add a second manual `insert` row: duplicate loader ids can prevent the Harness from starting.
 
@@ -118,7 +120,7 @@ See the full SOP: [`docs/workflow-requirement-doc.zh.md`](docs/workflow-requirem
 - Verify the package with the exact supported DSH baseline and Node.js baseline.
 - Run `pnpm typecheck`, `pnpm build`, `pnpm test`, and `node scripts/smoke.mjs`.
 - Inspect the archive contents: include built `lib/`, `client.js`, both manifests, the patch, and public documentation; exclude `node_modules`, `.git`, settings files, tokens, internal URLs, and internal document names.
-- Install the archive or GitLab URL into a clean `web` profile and confirm both Settings -> Plugins -> Plugin list and Plugin configuration.
+- Install the archive or GitHub URL into a clean `web` profile and confirm both Settings -> Plugins -> Plugin list and Plugin configuration.
 - Search the release tree for organization-specific names before publishing. A failed check blocks the release.
 
 ## Development
