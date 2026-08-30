@@ -23,7 +23,10 @@ export function apply(ctx: Context, config: Config = {} as Config) {
   // settings 注册时 base 传空对象，使解析值只反映 GUI 用户层，环境变量与配置行在下方回退。
   let settingsSource: () => Config = () => ({} as Config)
 
-  const makeClient = () => {
+  // 客户端复用：同一配置（baseUrl/apiToken/timeoutMs）复用同一 OutlineClient 实例，
+  // 使其 60s 文档缓存跨工具调用生效（与 README 承诺一致）；配置变更后按 key 自动重建。
+  let cachedClient: { key: string; client: OutlineClient } | null = null
+  const makeClient = (): OutlineClient => {
     const s = settingsSource()
     const baseUrl = (s.baseUrl ?? '').trim()
       || (process.env.OUTLINE_BASE_URL ?? '').trim()
@@ -36,7 +39,12 @@ export function apply(ctx: Context, config: Config = {} as Config) {
         'dsh-outline-auto 未配置：需要 baseUrl 与 apiToken（可在 设置 → 插件 → 插件配置 填写，或环境变量 OUTLINE_BASE_URL / OUTLINE_API_TOKEN）。配置方法见插件 README。',
       )
     }
-    return new OutlineClient({ baseUrl, apiToken, timeoutMs: config.timeoutMs ?? 15000 })
+    const timeoutMs = config.timeoutMs ?? 15000
+    const key = `${baseUrl}\u0000${apiToken}\u0000${timeoutMs}`
+    if (cachedClient !== null && cachedClient.key === key) return cachedClient.client
+    const client = new OutlineClient({ baseUrl, apiToken, timeoutMs })
+    cachedClient = { key, client }
+    return client
   }
 
   // 可写目录白名单：settings 用户层 → 插件配置 → 默认空（只读模式）。

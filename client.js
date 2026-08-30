@@ -1,7 +1,7 @@
 // dsh-outline-auto 浏览器半区（单文件模块，无外部构建依赖）
 //
 // 职责：在 设置 → 插件 → 插件配置 注册一张配置卡片（settings.plugin.item 槽位，
-// key = 'outline-auto' 命名空间），编辑 Outline 知识库连接的 baseUrl / apiToken。
+// key = 'outline-auto' 命名空间），编辑 Outline 知识库连接的 baseUrl / apiToken / writablePaths。
 // 卡片外观与官方卡片（终端 / Agent 循环 / 网页搜索）保持一致：可折叠头部 +
 // chevron + 字段组 + 底部操作栏，样式使用同一套 --dsw-alias-* 主题变量。
 // 数据经 settingsScope 服务写入宿主端 settings.yaml 的 outline-auto 命名空间，
@@ -38,8 +38,8 @@ window.__ModuleLoader__.load({
 			confirmRemoveUrl: "确定要移除已保存的 Outline 服务地址吗？",
 			confirmRemoveToken: "确定要移除已保存的 API Token 吗？",
 			confirmRemoveWritable: "确定要清空可写目录吗？清空后插件回到只读模式。",
-			keepUrlPlaceholder: "留空则保留当前值；输入新地址以替换",
-			keepTokenPlaceholder: "留空则保留当前值；输入新 API Token 以替换",
+			keepUrlPlaceholder: "留空将清除当前地址；输入新地址以替换",
+			keepTokenPlaceholder: "留空将清除当前 Token；输入新 API Token 以替换",
 			tokenHintConfigured: "已配置。星号为占位，真实值不会被显示。",
 			saved: "已保存。新会话将使用更新后的配置。",
 			readonlyMode: "只读",
@@ -73,8 +73,8 @@ window.__ModuleLoader__.load({
 			confirmRemoveUrl: "Remove the saved Outline service URL?",
 			confirmRemoveToken: "Remove the saved API Token?",
 			confirmRemoveWritable: "Clear the writable paths? The plugin returns to read-only mode.",
-			keepUrlPlaceholder: "Leave blank to keep the current value; enter a new URL to replace it",
-			keepTokenPlaceholder: "Leave blank to keep the current value; enter a new API Token to replace it",
+			keepUrlPlaceholder: "Leave blank to clear the current URL; enter a new URL to replace it",
+			keepTokenPlaceholder: "Leave blank to clear the current token; enter a new API Token to replace it",
 			tokenHintConfigured: "Configured. The stars are a placeholder; the real value is never shown.",
 			saved: "Saved. New conversations will use the updated configuration.",
 			readonlyMode: "Read-only",

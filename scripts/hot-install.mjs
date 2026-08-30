@@ -2,7 +2,9 @@
 //
 // 原理：DSH 对 profile 的 cordis.patch.yml 做热加载（HMR），
 // 把插件作为 insert 行追加进去会即时重组 loader 树（宿主端立即生效，
-// outline_search / outline_get_document 马上可用）；客户端模块系统增量扫描
+// 全部 10 个工具：outline_search / outline_get_document / outline_count / outline_list_collections /
+// outline_resolve_path / outline_list_children / outline_doc_template / outline_create /
+// outline_update_document / outline_delete 马上可用）；客户端模块系统增量扫描
 // loader 树，浏览器刷新一次页面后设置卡片即出现。
 //
 // 用法（在插件目录内执行）：
