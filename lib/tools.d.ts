@@ -35,7 +35,7 @@ export type WritePathTarget = {
  * @returns 禁止或无法确认时返回错误提示文案；允许时返回 null。
  */
 export declare function resolvePathGuard(client: OutlineClient, target: WritePathTarget, entries: WritablePathEntry[], collections: OutlineCollection[]): Promise<string | null>;
-/** 团队标准需求文档模板（Markdown，依据团队标准需求对齐模板 v4）。
+/** 标准需求文档模板（Markdown）。
  * 排版约定：条目类章节（需求或目标/交付物/交付标准/潜在风险点/工作思路）如有多个条目，
  * 必须换行并逐条编号（1、2、3、… 一点一行），不要挤成一段。 */
 export declare const REQUIREMENT_DOC_TEMPLATE: string;

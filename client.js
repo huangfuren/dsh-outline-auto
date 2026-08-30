@@ -92,7 +92,7 @@ window.__ModuleLoader__.load({
 
 		const FIELDS = ["baseUrl", "apiToken", "writablePaths"];
 
-		// 仅用于视觉提示的占位符，永远不会写入设置（对齐 jumpserver 的敏感值处理）。
+		// 仅用于视觉提示的占位符，永远不会写入设置（敏感值统一掩码处理）。
 		const MASK = "*".repeat(28);
 
 		/**
@@ -199,7 +199,7 @@ window.__ModuleLoader__.load({
 				const snap = scope.getSnapshot();
 				const ready = snap.status === "ready";
 				// 判定“已配置”用已保存的存储值（snap.value），不受未保存草稿影响：
-				// baseUrl 与 apiToken 都已填写才视为已配置（与 jumpserver 卡片同语义）。
+				// baseUrl 与 apiToken 都已填写才视为已配置。
 				const stored = (ready && snap.value) || {};
 				const out = {
 					available: ready,
@@ -305,7 +305,7 @@ window.__ModuleLoader__.load({
 			);
 		}
 
-		/** 复刻官方 ValueField 的字段行（支持状态徽标、敏感值掩码、移除按钮，对齐 jumpserver 卡片）。 */
+		/** 复刻官方 ValueField 的字段行（支持状态徽标、敏感值掩码、移除按钮）。 */
 		function ValueField(props) {
 			return React.createElement(
 				"div", { className: "dsh-oac-field" },
@@ -467,7 +467,7 @@ window.__ModuleLoader__.load({
 			ctx.effect(() => ctx.locale.register(NS, { zh, en }), "dsh-outline-auto: settings card locale");
 			const controller = createController(ctx.settingsScope.bind({ namespace: NS_KEY }));
 			// keyed 槽位按 priority 升序排列（order 无效）：priority -1 使本卡片排在所有
-			// 默认 priority 0 的卡片之前；inject 声明式注册与 jumpserver/grafana 一致。
+			// 默认 priority 0 的卡片之前；使用 inject 声明式注册。
 			ctx.slots.inject("settings.plugin.item", () => ctx.slots.register({
 				name: "settings.plugin.item",
 				key: NS_KEY,

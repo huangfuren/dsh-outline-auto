@@ -217,7 +217,7 @@ export async function resolvePathGuard(
   return null
 }
 
-/** 团队标准需求文档模板（Markdown，依据团队标准需求对齐模板 v4）。
+/** 标准需求文档模板（Markdown）。
  * 排版约定：条目类章节（需求或目标/交付物/交付标准/潜在风险点/工作思路）如有多个条目，
  * 必须换行并逐条编号（1、2、3、… 一点一行），不要挤成一段。 */
 export const REQUIREMENT_DOC_TEMPLATE = [
@@ -262,7 +262,7 @@ export const REQUIREMENT_DOC_SECTIONS = ['需求或目标', '交付物', '交付
 export function outlineDocTemplateTool() {
   return defineTool({
     name: 'outline_doc_template',
-    description: '返回团队标准的需求文档模板（Markdown）与章节清单。撰写/更新需求文档前先调用本工具获取模板，保证格式一致。',
+    description: '返回标准的需求文档模板（Markdown）与章节清单。撰写/更新需求文档前先调用本工具获取模板，保证格式一致。',
     parameters: {},
     output: {
       schema: {
