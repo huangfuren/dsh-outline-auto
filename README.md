@@ -31,7 +31,7 @@ A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getou
 | Component | Baseline |
 | --- | --- |
 | Platform | Windows / macOS / Linux |
-| Node.js | 22.13 or newer |
+| Node.js | 22.19 or newer |
 | DeepSeek Harness | `0.1.1-rc.2` (required baseline) |
 | Outline instance | reachable from your machine (intranet / VPN), with an API token (Outline → Settings → API keys) |
 
@@ -47,7 +47,9 @@ dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.
 
 The `#v0.3.0` suffix pins the exact release; omit it to track the latest commit on `main`.
 
-Restart `dsh web` after installation. The command updates the profile manifest and activates the package's `dsh.bundle` patch. Do not add a second manual `insert` row: duplicate loader ids can prevent the Harness from starting.
+Restart `dsh web` after installation. The published package contains the built `lib/` directory, so a normal Git install does not depend on a local build step. Its install hook only removes stale references to this plugin's old package name (`dsh-outline-ai`) from the selected DSH profile; it does not remove or rewrite unrelated plugins.
+
+For an AI-assisted installation, use the DSH plugin manager command above and do not manually add a second `cordis.patch.yml` entry or edit `dsh.profile.bundles`. If startup still fails and the error names another plugin, repair or disable that named plugin separately.
 
 For a local checkout or extracted archive:
 
@@ -71,7 +73,13 @@ The `scripts/hot-install.mjs` flow is intended for local development only. It cr
 dsh plugin --profile web why dsh-outline-auto
 ```
 
-If startup reports that it cannot resolve `dsh-outline-ai`, an older renamed entry remains in `%USERPROFILE%/.dsh/profiles/web/package.json` or the profile `cordis.patch.yml`. Remove that stale dependency or insert row, then run the recommended install command again. Do not rename the current package back to the old id.
+If startup reports that it cannot resolve `dsh-outline-ai`, an older renamed entry remains in `%USERPROFILE%/.dsh/profiles/web/package.json` or the profile `cordis.patch.yml`. Reinstall this package in the affected profile; the install hook migrates the stale references when package lifecycle scripts are enabled. For a profile where scripts were disabled, run this explicit repair:
+
+```powershell
+node node_modules/dsh-outline-auto/scripts/repair-profile.mjs --profile-dir "$env:USERPROFILE/.dsh/profiles/web"
+```
+
+Then run the DSH plugin manager once to refresh the profile lockfile before restarting `dsh web`. Do not rename the current package back to the old id.
 
 If the package loads but the card is absent, restart `dsh web`, open Settings → Plugins, check **Plugin list** for `dsh-outline-auto`, then check **Plugin configuration**. A failed host entry will not expose its settings namespace.
 

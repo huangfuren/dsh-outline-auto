@@ -4,7 +4,7 @@
 
 DeepSeek Harness 的 Outline 插件：在对话中搜索、读取并在用户审批后创建、更新或删除文档。插件只连接用户配置的 Outline 实例，不携带任何组织内部地址、token、集合名或文档内容。
 
-> 当前版本：0.3.0。支持的 DeepSeek Harness 基线为 `0.1.1-rc.2`，Node.js 需要 22.13 或更高版本；支持 Windows / macOS / Linux 三种平台。
+> 当前版本：0.3.0。支持的 DeepSeek Harness 基线为 `0.1.1-rc.2`，Node.js 需要 22.19 或更高版本；支持 Windows / macOS / Linux 三种平台。
 
 ## 功能
 
@@ -27,7 +27,9 @@ dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.
 
 `#v0.3.0` 后缀固定到该发布版本；去掉后缀则跟随 `main` 分支最新提交。
 
-安装后重启 `dsh web`。该命令会更新 profile manifest 并激活插件的 `dsh.bundle` patch。不要再次手工添加同一个 `insert` 行，重复 Loader id 可能导致 Harness 启动失败。
+安装后重启 `dsh web`。发布包已经包含编译后的 `lib/`，正常从 Git 安装时不依赖用户本地构建。安装钩子只会清理当前 DSH profile 中本插件旧名称 `dsh-outline-ai` 的残留引用，不会删除或改写其他插件。
+
+交给 AI 安装时，只使用上面的 DSH 插件管理命令，不要再手动追加 `cordis.patch.yml` 或编辑 `dsh.profile.bundles`。如果启动错误指向其他插件，应单独修复或禁用错误中点名的插件。
 
 本地 checkout 或解压后的目录可以使用：
 
@@ -51,7 +53,13 @@ pnpm build
 dsh plugin --profile web why dsh-outline-auto
 ```
 
-如果报无法解析 `dsh-outline-ai`，说明 `%USERPROFILE%/.dsh/profiles/web/package.json` 或 profile 的 `cordis.patch.yml` 仍有旧名称。删除旧依赖或旧 `insert` 行，再执行推荐安装命令；不要把当前包名改回旧 id。
+如果报无法解析 `dsh-outline-ai`，说明 `%USERPROFILE%/.dsh/profiles/web/package.json` 或 profile 的 `cordis.patch.yml` 仍有旧名称。重新在受影响的 profile 中安装本包；启用包生命周期脚本时，安装钩子会自动迁移。如果安装时禁用了脚本，请执行：
+
+```powershell
+node node_modules/dsh-outline-auto/scripts/repair-profile.mjs --profile-dir "$env:USERPROFILE/.dsh/profiles/web"
+```
+
+然后运行一次 DSH 插件管理命令刷新 profile lockfile，再重启 `dsh web`。不要把当前包名改回旧 id。
 
 如果插件已加载但看不到卡片，重启 `dsh web`，先在插件列表确认 `dsh-outline-auto`，再打开插件配置。宿主条目失败时不会注册 settings 命名空间。
 
