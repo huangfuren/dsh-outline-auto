@@ -48,6 +48,7 @@ jobs:
       # 编译 TS 到 lib/，验证构建产物完整性。
       - run: pnpm build
       # 在不真正发布的情况下打包，验证 files 清单与打包完整性。
-      - run: pnpm pack --dry-run --ignore-scripts
+      # 注：pnpm pack 不支持 --ignore-scripts（npm pack 才有），prepack 会重新 build，幂等无害。
+      - run: pnpm pack --dry-run
       # 仅审计生产依赖，且只报告 high 及以上级别的漏洞。
       - run: pnpm audit --prod --audit-level=high
