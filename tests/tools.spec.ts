@@ -228,6 +228,13 @@ describe('outline_search 过滤', () => {
     await tool.execute({ query: 'x', collectionId: 'c1', userId: 'u1', updatedAfter: '2026-08-01' }, exec)
     expect(seen).toEqual({ q: 'x', l: 10, coll: 'c1', filters: { userId: 'u1', updatedAfter: '2026-08-01' } })
   })
+
+  it('透传 offset 翻页参数', async () => {
+    let seen: any
+    const tool = outlineSearchTool(() => fakeClient({ searchDocuments: async (q, l, coll, filters, offset) => { seen = { q, l, coll, filters, offset }; return { total: 0, hits: [] } } }), 10)
+    await tool.execute({ query: 'x', offset: 25 }, exec)
+    expect(seen).toEqual({ q: 'x', l: 10, coll: undefined, filters: { userId: undefined, updatedAfter: undefined }, offset: 25 })
+  })
 })
 
 describe('outline_update_document', () => {

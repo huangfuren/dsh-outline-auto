@@ -4,7 +4,7 @@
 
 A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getoutline.com/) knowledge base from your conversation. Give it a keyword — it returns matching documents with **titles, snippets, and links**; ask for one of them and it returns the **full content in Markdown**. Approved write tools can create, update, and delete documents, with an approval prompt before every write.
 
-> Project status: 0.3.0. The current feature set is covered by unit tests, a Mock-server smoke, and a settings-chain integration check. The supported DSH baseline is `0.1.1-rc.2`; older Harness builds are not certified.
+> Project status: 0.3.1. The current feature set is covered by unit tests, a Mock-server smoke, and a settings-chain integration check. The supported DSH baseline is `0.1.1-rc.2`; older Harness builds are not certified.
 
 
 ## The core idea
@@ -18,7 +18,7 @@ A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getou
 
 - **Ten tools** — search, read, count, list collections, resolve paths, list children, return a document template, create, update, and delete.
 - **Clickable results** — document links are resolved to absolute URLs against your `baseUrl` (Outline returns relative paths); snippets and titles are cleaned of HTML tags so results render cleanly in chat.
-- **Document read cache (60s TTL)** — re-reading the same document within a session does not hit the API again.
+- **Document read cache (60s TTL)** — re-reading the same document within a session does not hit the API again; write tools invalidate the cache so edits are visible immediately.
 - **GUI configuration card** — Settings → Plugins → plugin configuration, an **Outline Knowledge Base** card matching the official card UI; fill in `baseUrl` and API token, click save, done.
 - **Per-user credentials** — every user configures their own token in the GUI (stored under `$DSH_HOME/settings.yaml`, never in git); ideal for team distribution.
 - **Safe when unconfigured** — the plugin loads normally and tools return clear Chinese error messages; the GUI is never blocked.
@@ -42,10 +42,10 @@ A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getou
 Install from the public GitHub repository, pinned to the latest release tag:
 
 ```bash
-dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.git#v0.3.0
+dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.git#v0.3.1
 ```
 
-The `#v0.3.0` suffix pins the exact release; omit it to track the latest commit on `main`.
+The `#v0.3.1` suffix pins the exact release; omit it to track the latest commit on `main`.
 
 Restart `dsh web` after installation. The published package contains the built `lib/` directory, so a normal Git install does not depend on a local build step. Its install hook only removes stale references to this plugin's old package name (`dsh-outline-ai`) from the selected DSH profile; it does not remove or rewrite unrelated plugins.
 
@@ -107,7 +107,7 @@ The public package must not contain organization-specific collection names, URLs
 
 | Tool | Description |
 | --- | --- |
-| `outline_search(query, limit?, collectionId?, userId?, updatedAfter?)` | Keyword search; returns the match **total**, plus title, snippet, document id and link per hit. Optional filters: collection, author (userId), updated-after. |
+| `outline_search(query, limit?, offset?, collectionId?, userId?, updatedAfter?)` | Keyword search; returns the match **total**, plus title, snippet, document id and link per hit. Optional filters: collection, author (userId), updated-after; `offset` skips the first N hits for pagination. |
 | `outline_get_document(id, maxLength?)` | Fetch a document's full Markdown by id; `maxLength` caps the returned text (default 20000). |
 | `outline_count()` | Total number of documents in the knowledge base (`documents.list` total, exact; excludes trashed/deleted — the true total may be slightly higher). |
 | `outline_list_collections()` | List visible collections (id, name, permission, document count). |

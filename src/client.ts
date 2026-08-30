@@ -132,10 +132,11 @@ export class OutlineClient {
     return data as T
   }
 
-  async searchDocuments(query: string, limit: number, collectionId?: string, filters?: { userId?: string; updatedAfter?: string }): Promise<OutlineSearchResult> {
+  async searchDocuments(query: string, limit: number, collectionId?: string, filters?: { userId?: string; updatedAfter?: string }, offset = 0): Promise<OutlineSearchResult> {
     const json = await this.requestJson(`/api/documents.search`, {
       query,
       limit,
+      ...(offset > 0 ? { offset } : {}),
       ...(collectionId !== undefined && collectionId !== '' ? { collectionId } : {}),
       ...(filters?.userId !== undefined && filters.userId !== '' ? { userId: filters.userId } : {}),
       ...(filters?.updatedAfter !== undefined && filters.updatedAfter !== '' ? { updatedAfter: filters.updatedAfter } : {}),
@@ -172,17 +173,26 @@ export class OutlineClient {
   async listCollections(force = false): Promise<OutlineCollection[]> {
     const cached = this.collectionsCache
     if (!force && cached !== null && cached !== undefined && cached.expires > Date.now()) return cached.collections
-    const json = await this.requestJson(`/api/collections.list?limit=100`, {})
-    const data = Array.isArray(json.data) ? json.data : []
-    const collections = data.map((item) => {
-      const c = (item ?? {}) as Record<string, unknown>
-      return {
-        id: typeof c.id === 'string' ? c.id : '',
-        name: typeof c.name === 'string' ? c.name : '(未命名集合)',
-        permission: typeof c.permission === 'string' ? c.permission : '',
-        ...(typeof c.documentCount === 'number' ? { documentCount: c.documentCount } : {}),
+    // Outline 分页：循环拉取直到收齐 pagination.total（防止集合数超过一页时漏集合）
+    const collections: OutlineCollection[] = []
+    const pageSize = 100
+    for (let offset = 0; ; offset += pageSize) {
+      const json = await this.requestJson(`/api/collections.list?limit=${pageSize}&offset=${offset}`, {})
+      const data = Array.isArray(json.data) ? json.data : []
+      for (const item of data) {
+        const c = (item ?? {}) as Record<string, unknown>
+        collections.push({
+          id: typeof c.id === 'string' ? c.id : '',
+          name: typeof c.name === 'string' ? c.name : '(未命名集合)',
+          permission: typeof c.permission === 'string' ? c.permission : '',
+          ...(typeof c.documentCount === 'number' ? { documentCount: c.documentCount } : {}),
+        })
       }
-    })
+      const pagination = (json.pagination ?? {}) as { total?: unknown }
+      const total = typeof pagination.total === 'number' ? pagination.total : collections.length
+      if (data.length === 0) break
+      if (collections.length >= total) break
+    }
     this.collectionsCache = { expires: Date.now() + OutlineClient.DOC_CACHE_TTL_MS, collections }
     return collections
   }
@@ -196,6 +206,8 @@ export class OutlineClient {
       publish: input.publish ?? true,
       ...(input.parentDocumentId !== undefined && input.parentDocumentId !== '' ? { parentDocumentId: input.parentDocumentId } : {}),
     })
+    // 新建后集合文档数变化，失效集合缓存
+    this.collectionsCache = null
     return {
       id: typeof data.id === 'string' ? data.id : '',
       url: this.absolutize(typeof data.url === 'string' ? data.url : ''),
@@ -210,6 +222,8 @@ export class OutlineClient {
     if (input.title !== undefined && input.title !== '') payload.title = input.title
     if (input.text !== undefined && input.text !== '') payload.text = input.text
     const data = await this.request<Record<string, unknown>>(`/api/documents.update`, payload)
+    // 更新后清除该文档缓存，避免 60s 内读到旧内容
+    this.docCache.delete(id)
     return {
       id: typeof data.id === 'string' ? data.id : id,
       url: this.absolutize(typeof data.url === 'string' ? data.url : ''),
@@ -222,6 +236,9 @@ export class OutlineClient {
   async deleteDocument(id: string): Promise<{ success: boolean }> {
     // 本实例 delete 响应形如 {success:true, ok:true}，无 data 字段 → 用 requestJson 直接读
     const json = await this.requestJson(`/api/documents.delete`, { id })
+    // 删除后清除文档缓存与集合缓存（文档数/可见性变化）
+    this.docCache.delete(id)
+    this.collectionsCache = null
     return { success: json.success !== false }
   }
 
@@ -245,21 +262,34 @@ export class OutlineClient {
   }
 
   /** 列出某父文档下的直接子文档（用于路径定位；本地匹配名称，避免搜索分词歧义）。 */
-  async listChildDocuments(parentDocumentId: string, limit = 100): Promise<OutlineSearchHit[]> {
-    const json = await this.requestJson(`/api/documents.list`, { parentDocumentId, limit })
-    const data = Array.isArray(json.data) ? json.data : []
-    return data.map((item) => {
-      const d = (item ?? {}) as Record<string, unknown>
-      return {
-        id: typeof d.id === 'string' ? d.id : '',
-        title: OutlineClient.stripHtml(typeof d.title === 'string' ? d.title : '(无标题)'),
-        url: this.absolutize(typeof d.url === 'string' ? d.url : ''),
-        snippet: '',
-        collectionId: typeof d.collectionId === 'string' ? d.collectionId : '',
-        updatedAt: typeof d.updatedAt === 'string' ? d.updatedAt : '',
-        ...(d.parentDocumentId !== undefined && d.parentDocumentId !== null ? { parentDocumentId: String(d.parentDocumentId) } : {}),
+  async listChildDocuments(parentDocumentId: string, pageSize = 100): Promise<OutlineSearchHit[]> {
+    // Outline documents.list 分页：循环拉取直到收齐 total（防止子文档超过一页时漏项）
+    const hits: OutlineSearchHit[] = []
+    for (let offset = 0; ; offset += pageSize) {
+      const json = await this.requestJson(`/api/documents.list`, {
+        parentDocumentId,
+        limit: pageSize,
+        ...(offset > 0 ? { offset } : {}),
+      })
+      const data = Array.isArray(json.data) ? json.data : []
+      for (const item of data) {
+        const d = (item ?? {}) as Record<string, unknown>
+        hits.push({
+          id: typeof d.id === 'string' ? d.id : '',
+          title: OutlineClient.stripHtml(typeof d.title === 'string' ? d.title : '(无标题)'),
+          url: this.absolutize(typeof d.url === 'string' ? d.url : ''),
+          snippet: '',
+          collectionId: typeof d.collectionId === 'string' ? d.collectionId : '',
+          updatedAt: typeof d.updatedAt === 'string' ? d.updatedAt : '',
+          ...(d.parentDocumentId !== undefined && d.parentDocumentId !== null ? { parentDocumentId: String(d.parentDocumentId) } : {}),
+        })
       }
-    })
+      const pagination = (json.pagination ?? {}) as { total?: unknown }
+      const total = typeof pagination.total === 'number' ? pagination.total : hits.length
+      if (data.length === 0) break
+      if (hits.length >= total) break
+    }
+    return hits
   }
 
   /** 解析一个文档的完整路径：返回 [集合名, 顶级目录, …, 文档名]（自顶向下）。 */

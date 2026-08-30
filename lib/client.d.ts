@@ -62,7 +62,7 @@ export declare class OutlineClient {
     searchDocuments(query: string, limit: number, collectionId?: string, filters?: {
         userId?: string;
         updatedAfter?: string;
-    }): Promise<OutlineSearchResult>;
+    }, offset?: number): Promise<OutlineSearchResult>;
     /** 统计 Outline 知识库文档总数（documents.list 分页 total；不含已删除/回收站文档）。 */
     countDocuments(filters?: Record<string, unknown>): Promise<number>;
     /** 列出当前 token 可见的集合（60s 缓存）。注：实例要求 collections.list 带查询串。 */
@@ -86,7 +86,7 @@ export declare class OutlineClient {
     }>;
     getDocument(id: string): Promise<OutlineDocument>;
     /** 列出某父文档下的直接子文档（用于路径定位；本地匹配名称，避免搜索分词歧义）。 */
-    listChildDocuments(parentDocumentId: string, limit?: number): Promise<OutlineSearchHit[]>;
+    listChildDocuments(parentDocumentId: string, pageSize?: number): Promise<OutlineSearchHit[]>;
     /** 解析一个文档的完整路径：返回 [集合名, 顶级目录, …, 文档名]（自顶向下）。 */
     resolveDocumentPath(docId: string): Promise<string[]>;
 }

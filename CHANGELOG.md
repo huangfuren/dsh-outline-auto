@@ -8,6 +8,14 @@ All notable changes to this project are documented here. Release-specific notes 
 
 - Placeholder for the next release.
 
+## [v0.3.1] - 2026-08-30
+
+### Fixed
+
+- **分页补齐**：`outline_list_collections` 与 `outline_list_children` 改为循环翻页直到收齐 `pagination.total`，不再因单页上限（100 条）漏集合或漏子文档。
+- **搜索翻页**：`outline_search` 新增 `offset` 参数，可配合 `limit` 翻页查看更多结果。
+- **写后缓存失效**：`outline_create` / `outline_update_document` / `outline_delete` 执行成功后主动清除对应文档缓存与集合缓存，避免 60s 缓存窗口内读到旧内容。
+
 ## [v0.3.0] - 2026-08-30
 
 ### Added

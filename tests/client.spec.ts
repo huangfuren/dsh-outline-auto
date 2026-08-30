@@ -359,4 +359,101 @@ describe('OutlineClient', () => {
     const path = await client.resolveDocumentPath('leaf')
     expect(path).toEqual(['集合A', '根目录', '中层', '叶子'])
   })
+
+  it('searchDocuments 透传 offset 用于翻页', async () => {
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async (_url, init) => {
+        expect(JSON.parse(String(init.body))).toEqual({ query: 'x', limit: 5, offset: 10 })
+        return { status: 200, body: { data: [], pagination: { total: 0 } } }
+      }),
+    })
+    const r = await client.searchDocuments('x', 5, undefined, undefined, 10)
+    expect(r.total).toBe(0)
+  })
+
+  it('listCollections 翻页收齐全部集合', async () => {
+    let calls = 0
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async (url) => {
+        calls += 1
+        const offset = Number(new URL(String(url)).searchParams.get('offset') ?? '0')
+        if (offset === 0) {
+          return { status: 200, body: { data: [
+            { id: 'c1', name: '集合A', permission: 'read_write' },
+            { id: 'c2', name: '集合B', permission: 'read_write' },
+          ], pagination: { total: 3 } } }
+        }
+        return { status: 200, body: { data: [{ id: 'c3', name: '集合C', permission: 'read' }], pagination: { total: 3 } } }
+      }),
+    })
+    const collections = await client.listCollections()
+    expect(collections).toHaveLength(3)
+    expect(collections[2].name).toBe('集合C')
+    expect(calls).toBe(2)
+  })
+
+  it('listChildDocuments 翻页收齐全部子文档', async () => {
+    let calls = 0
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async (_url, init) => {
+        calls += 1
+        const body = JSON.parse(String(init.body)) as { offset?: number }
+        if (!body.offset) {
+          return { status: 200, body: { data: [
+            { id: 'd1', title: '子1', url: '/doc/d1', collectionId: 'c', updatedAt: '' },
+            { id: 'd2', title: '子2', url: '/doc/d2', collectionId: 'c', updatedAt: '' },
+          ], pagination: { total: 3 } } }
+        }
+        return { status: 200, body: { data: [{ id: 'd3', title: '子3', url: '/doc/d3', collectionId: 'c', updatedAt: '' }], pagination: { total: 3 } } }
+      }),
+    })
+    const hits = await client.listChildDocuments('parent-1')
+    expect(hits).toHaveLength(3)
+    expect(hits[2].id).toBe('d3')
+    expect(calls).toBe(2)
+  })
+
+  it('updateDocument 后清除该文档缓存', async () => {
+    let calls = 0
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async (url, init) => {
+        calls += 1
+        if (String(url).includes('/api/documents.update')) {
+          return { status: 200, body: { data: { id: 'd1', title: '新标题', url: '/doc/d1', published: true } } }
+        }
+        return { status: 200, body: { data: { id: 'd1', title: '新标题', url: '/doc/d1', text: 'body', updatedAt: '' } } }
+      }),
+    })
+    await client.getDocument('d1') // 写入缓存
+    await client.updateDocument('d1', { title: '新标题' })
+    await client.getDocument('d1') // 缓存已失效 → 重新请求
+    expect(calls).toBe(3) // info + update + info
+  })
+
+  it('deleteDocument 后清除文档缓存', async () => {
+    let calls = 0
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async (url) => {
+        calls += 1
+        if (String(url).includes('/api/documents.delete')) {
+          return { status: 200, body: { data: { id: 'd1', success: true } } }
+        }
+        return { status: 200, body: { data: { id: 'd1', title: 'T', url: '/doc/d1', text: 'body', updatedAt: '' } } }
+      }),
+    })
+    await client.getDocument('d1')
+    await client.deleteDocument('d1')
+    await client.getDocument('d1')
+    expect(calls).toBe(3)
+  })
 })
