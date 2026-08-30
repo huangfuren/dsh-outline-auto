@@ -16,16 +16,19 @@ permissions:
   contents: read
 
 jobs:
-  # 校验任务：在矩阵中列出的每个 Node.js 版本上运行同一套校验。
+  # 校验任务：在矩阵中列出的每个 Node.js 版本 × 操作系统上运行同一套校验。
+  # 覆盖 Windows / macOS / Linux，确认插件在三种平台（苹果与 Windows 用户）都能构建与测试。
   verify:
-    name: Node ${{ matrix.node }}
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }} / Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
     strategy:
       # 即使某个版本失败也不中断其它版本，便于看全矩阵结果。
       fail-fast: false
       matrix:
-        # 覆盖 package.json engines 声明的兼容基线：Node 22 / 24。
+        # Node 版本覆盖 engines 声明的兼容基线（22 / 24）；
+        # 操作系统覆盖主流用户平台。
         node: [22, 24]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       # 拉取源码。
       - uses: actions/checkout@v4

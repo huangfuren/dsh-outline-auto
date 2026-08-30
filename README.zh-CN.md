@@ -4,7 +4,7 @@
 
 DeepSeek Harness 的 Outline 插件：在对话中搜索、读取并在用户审批后创建、更新或删除文档。插件只连接用户配置的 Outline 实例，不携带任何组织内部地址、token、集合名或文档内容。
 
-> 当前版本：0.3.0。支持的 DeepSeek Harness 基线为 `0.1.1-rc.2`，Node.js 需要 22.13 或更高版本。
+> 当前版本：0.3.0。支持的 DeepSeek Harness 基线为 `0.1.1-rc.2`，Node.js 需要 22.13 或更高版本；支持 Windows / macOS / Linux 三种平台。
 
 ## 功能
 

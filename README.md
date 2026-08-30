@@ -30,6 +30,7 @@ A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getou
 
 | Component | Baseline |
 | --- | --- |
+| Platform | Windows / macOS / Linux |
 | Node.js | 22.13 or newer |
 | DeepSeek Harness | `0.1.1-rc.2` (required baseline) |
 | Outline instance | reachable from your machine (intranet / VPN), with an API token (Outline → Settings → API keys) |
