@@ -4,7 +4,7 @@
 
 A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getoutline.com/) knowledge base from your conversation. Give it a keyword — it returns matching documents with **titles, snippets, and links**; ask for one of them and it returns the **full content in Markdown**. Approved write tools can create, update, and delete documents, with an approval prompt before every write.
 
-> Project status: 0.2.2. The current feature set is covered by unit tests, a Mock-server smoke, and a settings-chain integration check. The supported DSH baseline is `0.1.1-rc.2`; older Harness builds are not certified.
+> Project status: 0.3.0. The current feature set is covered by unit tests, a Mock-server smoke, and a settings-chain integration check. The supported DSH baseline is `0.1.1-rc.2`; older Harness builds are not certified.
 
 
 ## The core idea
@@ -80,10 +80,17 @@ The recommended way is the **GUI card** (Settings → Plugins → plugin configu
 | --- | --- |
 | Service URL (baseUrl) | Outline instance root, e.g. `https://outline.example.com` |
 | API Token | create one at Outline → Settings → API keys |
+| Writable paths (empty = read-only) | comma-separated directory paths, e.g. `Collection A,Knowledge Base/Dir 1`; only these directories and their children are writable |
 
 Click **Save** — applies immediately. Alternatively, configure via environment variables (`OUTLINE_BASE_URL` / `OUTLINE_API_TOKEN`) or the plugin config row in `cordis.patch.yml`.
 
-The public package must not contain organization-specific collection names, URLs, tokens, or document examples. `protectedCollections` is deployment configuration: each installation must set its own comma-separated protected collection names. Never publish an internal collection name as a schema default or UI placeholder.
+**Read-only by default (v0.3.0)**: with no writable paths configured, all write tools (`outline_create` / `outline_update_document` / `outline_delete`) refuse to run — no approval prompt is even shown. To allow writes, list the directories that may be modified. A path like `Knowledge Base/Dir 1` covers every child under `Dir 1`; a bare `Collection A` covers the whole collection. Any path that cannot be resolved (missing collection, invisible directory, moved document) is refused — writes always fail closed.
+
+The public package must not contain organization-specific collection names, URLs, tokens, or document examples. Deployment-specific values are configured per installation — never publish an internal collection name as a schema default or UI placeholder.
+
+### Migrating from 0.2.x
+
+0.3.0 removes the `protectedCollections` deny-list in favor of the `writablePaths` allow-list. After upgrading, **every write is refused until you configure writable paths**. If you previously protected a collection via the deny-list, simply leave it out of `writablePaths` — a collection that is not listed is not writable. Delete the old `protectedCollections` setting from your plugin config row, then set `writablePaths` to the directories you actually write to.
 
 ## Tools
 
@@ -100,7 +107,7 @@ The public package must not contain organization-specific collection names, URLs
 | `outline_update_document(id, title?, text?)` | **Write** — update a document's title/body. **Requires approval** showing the document path. |
 | `outline_delete(id)` | **Write, irreversible** — delete a document. **Double approval**: a first prompt, then a second confirmation before deletion. |
 
-> Writes are refused in **protected collections** configured by each deployment. The public package must ship with no organization-specific default.
+> Writes are restricted to the **writable paths** configured per deployment (read-only when empty). The public package ships with no organization-specific default.
 
 ### Workflow: writing a requirement document (common task)
 

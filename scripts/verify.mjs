@@ -2,6 +2,7 @@
 //   默认：settings 命名空间 → settings.yaml 落盘 → 真实 search + count 链路
 //   --create：list_collections → 创建测试文档 → search 确认 → 自动清理
 // 用法：OUTLINE_BASE_URL=... OUTLINE_API_TOKEN=... node scripts/verify.mjs [--create] [关键词]
+//   --create 链需要可写目录：OUTLINE_WRITABLE_PATHS=集合A,集合B/目录1 一并传入
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -41,7 +42,11 @@ try {
   ctx.plugin(FileSettingsProvider, { dshHome: tmpHome, watch: false })
   ctx.plugin(plugin, {})
   await waitFor(() => ctx.settings?.get('outline-auto') !== undefined, 'settings ns')
-  await ctx.settings.update('outline-auto', { baseUrl: BASE_URL, apiToken: API_TOKEN })
+  await ctx.settings.update('outline-auto', {
+    baseUrl: BASE_URL,
+    apiToken: API_TOKEN,
+    ...(createMode && process.env.OUTLINE_WRITABLE_PATHS ? { writablePaths: process.env.OUTLINE_WRITABLE_PATHS } : {}),
+  })
   const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool]))
 
   if (createMode) {

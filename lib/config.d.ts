@@ -9,8 +9,8 @@ export interface Config {
     timeoutMs: number;
     /** outline_search 默认返回条数 */
     searchLimit: number;
-    /** 受保护集合名（逗号分隔），禁止在这些集合创建/更新/删除文档；默认不包含任何组织专属名称 */
-    protectedCollections?: string;
+    /** 可写目录路径（逗号分隔）：仅这些目录及其全部子级允许创建/更新/删除文档；留空 = 全库只读（默认） */
+    writablePaths?: string;
 }
 export declare const Config: Schema<Config>;
 export type { Context };

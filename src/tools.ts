@@ -150,15 +150,74 @@ export function buildCreateApprovalReason(
   return `在以下位置创建 Outline 文档：\n${location}\n标题：「${args.title ?? '(无标题)'}」\n内容预览：${preview}${(args.text ?? '').length > 100 ? '…' : ''}`
 }
 
-/** 默认受保护集合（发布包不携带任何组织专属名称）。 */
-export const FORBIDDEN_WRITE_COLLECTIONS: readonly string[] = []
-
-/** 写工具守卫来源：返回当前受保护集合名列表。 */
-export interface WriteGuards {
-  protectedCollections: () => string[]
+/** 白名单条目：一个可写目录路径。segments 为空表示整个集合可写。 */
+export interface WritablePathEntry {
+  collectionName: string
+  segments: string[]
 }
 
-/** 团队标准需求文档模板（Markdown，依据团队规范的需求对齐模板 v4）。
+/** 解析可写目录配置（逗号分隔）：`集合名` 或 `集合名/目录A/子目录B`。 */
+export function parseWritablePaths(raw: string): WritablePathEntry[] {
+  return raw.split(',').map((x) => x.trim()).filter((x) => x !== '').map((path) => {
+    const segments = path.split('/').map((s) => s.trim()).filter((s) => s !== '')
+    const collectionName = segments.shift() ?? ''
+    return { collectionName, segments }
+  })
+}
+
+/** 写入目标的两种形态：创建（目标位置）与更新/删除（目标文档）。 */
+export type WritePathTarget =
+  | { kind: 'create'; collectionId: string; parentDocumentId?: string }
+  | { kind: 'doc'; docId: string }
+
+/**
+ * 目录级写入守卫：目标路径必须落在白名单条目内（前缀匹配，fail-closed）。
+ * - 白名单为空 → 拒绝（插件为只读模式）
+ * - 目标路径解析失败（集合/文档不可见）→ 拒绝
+ * - 条目 `集合A/目录1` 匹配 `[集合A, 目录1, …任意子级]`；`集合A` 匹配整个集合
+ * @returns 禁止或无法确认时返回错误提示文案；允许时返回 null。
+ */
+export async function resolvePathGuard(
+  client: OutlineClient,
+  target: WritePathTarget,
+  entries: WritablePathEntry[],
+  collections: OutlineCollection[],
+): Promise<string | null> {
+  if (entries.length === 0) {
+    return '插件当前为只读模式：未配置可写目录。请在 设置 → 插件 → 插件配置 中填写可写目录（逗号分隔，如 集合A,集合B/目录1）。'
+  }
+  let targetPath: string[]
+  try {
+    if (target.kind === 'create') {
+      const coll = collections.find((c) => c.id === target.collectionId.trim())
+      if (coll === undefined) {
+        return `无法确认写入目标集合（${target.collectionId}）：集合不存在或当前 token 无权查看。为避免误写，本次操作已拒绝。`
+      }
+      targetPath = target.parentDocumentId !== undefined && target.parentDocumentId !== ''
+        ? await client.resolveDocumentPath(target.parentDocumentId)
+        : [coll.name]
+    } else {
+      targetPath = await client.resolveDocumentPath(target.docId)
+    }
+  } catch {
+    return '无法解析写入目标路径：目标集合或文档不可见。为避免误写，本次操作已拒绝。'
+  }
+  if (targetPath.length === 0) return '无法解析写入目标路径：目标位置为空。为避免误写，本次操作已拒绝。'
+  const collectionName = targetPath[0]
+  const rest = targetPath.slice(1)
+  const matched = entries.some((e) => {
+    if (normalizeName(e.collectionName) !== normalizeName(collectionName)) return false
+    if (e.segments.length > rest.length) return false
+    return e.segments.every((seg, i) => normalizeName(seg) === normalizeName(rest[i]))
+  })
+  if (!matched) {
+    const allowed = entries.map((e) => e.segments.length === 0 ? e.collectionName : `${e.collectionName}/${e.segments.join('/')}`).join('、')
+    return `禁止写入「${targetPath.join(' / ')}」：目标不在可写目录内。已配置可写目录：${allowed}。如需写入，请在 设置 → 插件 → 插件配置 中添加该路径。`
+  }
+  return null
+}
+
+/** 团队标准需求文档模板（Markdown，依据团队标准需求对齐模板 v4）。
  * 排版约定：条目类章节（需求或目标/交付物/交付标准/潜在风险点/工作思路）如有多个条目，
  * 必须换行并逐条编号（1、2、3、… 一点一行），不要挤成一段。 */
 export const REQUIREMENT_DOC_TEMPLATE = [
@@ -229,10 +288,10 @@ export function outlineDocTemplateTool() {
 const WRITE_PERMISSIONS = new Set(['read_write', 'manage', 'admin'])
 
 /**
- * 写入守卫：必须确认集合存在且 token 有写权限，再检查受保护名称。
+ * 基础写入守卫：必须确认集合存在且 token 有写权限。
  * @returns 禁止或无法确认时返回错误提示文案；允许时返回 null。
  */
-export function resolveWriteGuard(collections: OutlineCollection[], collectionId: string, protectedList: string[]): string | null {
+export function resolveWriteGuard(collections: OutlineCollection[], collectionId: string): string | null {
   const normalizedId = collectionId.trim()
   if (normalizedId === '') return '无法确认写入目标：缺少 collectionId。请先使用 outline_list_collections 或 outline_resolve_path。'
   const collection = collections.find((c) => c.id === normalizedId)
@@ -244,13 +303,10 @@ export function resolveWriteGuard(collections: OutlineCollection[], collectionId
   if (!WRITE_PERMISSIONS.has(permission)) {
     return `禁止在集合「${name || normalizedId}」写入文档：当前 token 的集合权限为「${collection.permission || '未知'}」。`
   }
-  if (name !== '' && protectedList.some((p) => p.trim() !== '' && normalizeName(p) === normalizeName(name))) {
-    return `禁止在集合「${name}」写入文档（该集合受保护，不允许修改）。`
-  }
   return null
 }
 
-/** 名称归一化：小写并去掉破折号/空格/下划线/括号，容忍"随手记张三"与"随手记-张三"这类差异。 */
+/** 名称归一化：小写并去掉破折号/空格/下划线/括号，容忍"张三"与"张-三"这类差异。 */
 function normalizeName(name: string): string {
   return name.toLowerCase().replace(/[-_·\s（）()]/g, '')
 }
@@ -268,9 +324,9 @@ function matchName(candidates: Array<{ id: string; name: string }>, wanted: stri
 export function outlineResolvePathTool(makeClient: () => OutlineClient) {
   return defineTool({
     name: 'outline_resolve_path',
-    description: '把用户描述的知识库路径（如"运维文档/目录A/子目录"）解析为具体的 collectionId 与 parentDocumentId，并返回解析出的完整路径。用于定位"在某某目录下创建文档"的目标位置；解析成功后把返回的 id 传给 outline_create（创建前用户还会看到完整路径确认）。',
+    description: '把用户描述的知识库路径（如"集合A/目录1/子目录2"）解析为具体的 collectionId 与 parentDocumentId，并返回解析出的完整路径。用于定位"在某某目录下创建文档"的目标位置；解析成功后把返回的 id 传给 outline_create（创建前用户还会看到完整路径确认）。',
     parameters: {
-      path: { type: 'string', required: true, description: '路径，用 / 分隔：第一段是集合名，后续段是逐级目录（文档）名，如 运维文档/目录A/子目录' },
+      path: { type: 'string', required: true, description: '路径，用 / 分隔：第一段是集合名，后续段是逐级目录（文档）名，如 集合A/目录1/子目录2' },
     },
     output: {
       schema: {
@@ -370,7 +426,7 @@ export function outlineListCollectionsTool(makeClient: () => OutlineClient) {
   })
 }
 
-export function outlineCreateTool(makeClient: () => OutlineClient, getProtected: () => string[]) {
+export function outlineCreateTool(makeClient: () => OutlineClient, getWritablePaths: () => string) {
   return defineTool({
     name: 'outline_create',
     description: '在指定 Outline 集合创建文档（写操作，每次执行前需用户审批，审批展示解析后的完整路径）。创建后返回文档链接。请先用 outline_list_collections / outline_resolve_path 确认目标位置。',
@@ -401,8 +457,16 @@ export function outlineCreateTool(makeClient: () => OutlineClient, getProtected:
     },
     async execute(args) {
       const client = makeClient()
-      // 写入守卫：受保护集合一律拒绝（防御纵深，即使绕过审批直调也会被拦）
-      const guard = resolveWriteGuard(await client.listCollections(), args.collectionId, getProtected())
+      const collections = await client.listCollections()
+      // 写入守卫（防御纵深，即使绕过审批直调也会被拦）：目录白名单 → 集合存在与权限
+      const pathGuard = await resolvePathGuard(
+        client,
+        { kind: 'create', collectionId: args.collectionId, parentDocumentId: args.parentDocumentId },
+        parseWritablePaths(getWritablePaths()),
+        collections,
+      )
+      if (pathGuard !== null) throw new Error(pathGuard)
+      const guard = resolveWriteGuard(collections, args.collectionId)
       if (guard !== null) throw new Error(guard)
       return client.createDocument({
         collectionId: args.collectionId,
@@ -415,7 +479,7 @@ export function outlineCreateTool(makeClient: () => OutlineClient, getProtected:
   })
 }
 
-export function outlineUpdateDocumentTool(makeClient: () => OutlineClient, getProtected: () => string[]) {
+export function outlineUpdateDocumentTool(makeClient: () => OutlineClient, getWritablePaths: () => string) {
   return defineTool({
     name: 'outline_update_document',
     description: '更新已有 Outline 文档的标题/正文（写操作，执行前需用户审批，审批展示文档完整路径）。',
@@ -443,7 +507,10 @@ export function outlineUpdateDocumentTool(makeClient: () => OutlineClient, getPr
       }
       const client = makeClient()
       const doc = await client.getDocument(args.id)
-      const guard = resolveWriteGuard(await client.listCollections(), doc.collectionId ?? '', getProtected())
+      const collections = await client.listCollections()
+      const pathGuard = await resolvePathGuard(client, { kind: 'doc', docId: args.id }, parseWritablePaths(getWritablePaths()), collections)
+      if (pathGuard !== null) throw new Error(pathGuard)
+      const guard = resolveWriteGuard(collections, doc.collectionId ?? '')
       if (guard !== null) throw new Error(guard)
       return client.updateDocument(args.id, { title: args.title, text: args.text })
     },
@@ -455,7 +522,7 @@ export type DeleteApprovalRequester = (reason: string, exec: { agent?: unknown; 
 
 export function outlineDeleteTool(
   makeClient: () => OutlineClient,
-  getProtected: () => string[],
+  getWritablePaths: () => string,
   requestApproval: DeleteApprovalRequester,
 ) {
   return defineTool({
@@ -478,7 +545,10 @@ export function outlineDeleteTool(
     async execute(args, exec) {
       const client = makeClient()
       const doc = await client.getDocument(args.id)
-      const guard = resolveWriteGuard(await client.listCollections(), doc.collectionId ?? '', getProtected())
+      const collections = await client.listCollections()
+      const pathGuard = await resolvePathGuard(client, { kind: 'doc', docId: args.id }, parseWritablePaths(getWritablePaths()), collections)
+      if (pathGuard !== null) throw new Error(pathGuard)
+      const guard = resolveWriteGuard(collections, doc.collectionId ?? '')
       if (guard !== null) throw new Error(guard)
       // 第二道审批（第一道在 pre-execute 钩子）；暂停等待用户点同意
       const ok = await requestApproval(

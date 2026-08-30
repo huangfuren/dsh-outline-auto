@@ -26,10 +26,24 @@ window.__ModuleLoader__.load({
 			baseUrlHint: "Outline 实例根地址，如 https://outline.example.com",
 			apiToken: "API Token",
 			apiTokenHint: "Outline 设置 → API 密钥 中生成",
-			protectedCollections: "受保护集合（禁止写入）",
-			protectedCollectionsHint: "逗号分隔集合名；留空表示不额外按名称保护集合。写操作仍需审批。",
+			writablePaths: "可写目录（留空 = 只读）",
+			writablePathsHint: "逗号分隔目录路径，如 集合A,集合B/目录1；仅这些目录及其子级可写入，默认全库只读",
 			overridden: "已覆盖",
 			reset: "恢复默认",
+			configured: "已配置",
+			notConfigured: "未配置",
+			removeUrl: "移除地址",
+			removeToken: "移除 Token",
+			removeWritable: "清空可写目录",
+			confirmRemoveUrl: "确定要移除已保存的 Outline 服务地址吗？",
+			confirmRemoveToken: "确定要移除已保存的 API Token 吗？",
+			confirmRemoveWritable: "确定要清空可写目录吗？清空后插件回到只读模式。",
+			keepUrlPlaceholder: "留空则保留当前值；输入新地址以替换",
+			keepTokenPlaceholder: "留空则保留当前值；输入新 API Token 以替换",
+			tokenHintConfigured: "已配置。星号为占位，真实值不会被显示。",
+			saved: "已保存。新会话将使用更新后的配置。",
+			readonlyMode: "只读",
+			writableMode: "可写",
 			save: "保存",
 			saving: "保存中…",
 			discard: "放弃修改",
@@ -47,10 +61,24 @@ window.__ModuleLoader__.load({
 			baseUrlHint: "Outline instance root, e.g. https://outline.example.com",
 			apiToken: "API Token",
 			apiTokenHint: "Create one at Outline Settings → API keys",
-			protectedCollections: "Protected collections (writes forbidden)",
-			protectedCollectionsHint: "Comma-separated collection names; empty means no additional name-based protection. Writes still require approval.",
+			writablePaths: "Writable paths (empty = read-only)",
+			writablePathsHint: "Comma-separated paths, e.g. CollectionA,CollectionB/Dir1; only these directories and their children are writable. Empty means read-only.",
 			overridden: "Overridden",
 			reset: "Reset",
+			configured: "Configured",
+			notConfigured: "Not configured",
+			removeUrl: "Remove URL",
+			removeToken: "Remove Token",
+			removeWritable: "Clear writable paths",
+			confirmRemoveUrl: "Remove the saved Outline service URL?",
+			confirmRemoveToken: "Remove the saved API Token?",
+			confirmRemoveWritable: "Clear the writable paths? The plugin returns to read-only mode.",
+			keepUrlPlaceholder: "Leave blank to keep the current value; enter a new URL to replace it",
+			keepTokenPlaceholder: "Leave blank to keep the current value; enter a new API Token to replace it",
+			tokenHintConfigured: "Configured. The stars are a placeholder; the real value is never shown.",
+			saved: "Saved. New conversations will use the updated configuration.",
+			readonlyMode: "Read-only",
+			writableMode: "Writable",
 			save: "Save",
 			saving: "Saving…",
 			discard: "Discard",
@@ -62,7 +90,10 @@ window.__ModuleLoader__.load({
 			emptyPlaceholder: "Leave empty to use the default",
 		};
 
-		const FIELDS = ["baseUrl", "apiToken", "protectedCollections"];
+		const FIELDS = ["baseUrl", "apiToken", "writablePaths"];
+
+		// 仅用于视觉提示的占位符，永远不会写入设置（对齐 jumpserver 的敏感值处理）。
+		const MASK = "*".repeat(28);
 
 		/**
 		 * 复刻官方 PluginCard.module.css / fields.module.css 的样式规则，
@@ -88,6 +119,7 @@ window.__ModuleLoader__.load({
 			".dsh-oac-label{flex:1;min-width:0;font-size:13px;font-weight:500;line-height:1.5;color:var(--dsw-alias-label-primary)}",
 			".dsh-oac-badges{display:inline-flex;align-items:center;gap:8px}",
 			".dsh-oac-badge{border-radius:999px;padding:1px 8px;font-size:11px;line-height:17px;white-space:nowrap;font-weight:500;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary)}",
+			".dsh-oac-badgeOk{color:#2f9e44}",
 			".dsh-oac-reset{border:none;background:none;padding:0;font:inherit;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary);cursor:pointer}",
 			".dsh-oac-reset:hover:not(:disabled){color:var(--dsw-alias-label-primary)}",
 			".dsh-oac-reset:disabled{cursor:default}",
@@ -97,6 +129,7 @@ window.__ModuleLoader__.load({
 			".dsh-oac-hint{margin:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}",
 			".dsh-oac-footer{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:12px 0 4px;border-top:1px solid var(--dsw-alias-border-l2)}",
 			".dsh-oac-failed{flex:1;min-width:0;margin:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-error)}",
+			".dsh-oac-msg{flex:1;min-width:0;margin:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary)}",
 			".dsh-oac-discard,.dsh-oac-save{appearance:none;border:1px solid transparent;border-radius:8px;padding:5px 14px;font:inherit;font-size:13px;line-height:1.5;cursor:pointer}",
 			".dsh-oac-discard{border-color:var(--dsw-alias-border-l2);background:none;color:var(--dsw-alias-label-secondary)}",
 			".dsh-oac-discard:hover:not(:disabled){color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-label-dimmed)}",
@@ -136,12 +169,14 @@ window.__ModuleLoader__.load({
 
 		/**
 		 * 卡片表单控制器：把 settingsScope 命名空间快照投影为卡片状态，
-		 * 提供 edit/resetField/save/discard 动作（形状对齐官方 CardActions）。
+		 * 提供 edit/resetField/save/discard/focus/remove 动作（对齐官方 CardActions）。
 		 */
 		function createController(scope) {
 			let draft = {}; // field -> { text, clear }
 			let saving = false;
 			let failed = false;
+			let saved = false;
+			let focused = {}; // field -> boolean（apiToken 掩码的聚焦状态）
 			const store = createStore(project());
 
 			function fieldState(name) {
@@ -152,12 +187,20 @@ window.__ModuleLoader__.load({
 				const staged = draft[name];
 				const text = staged !== undefined ? staged.text : (ready ? String(value[name] ?? "") : "");
 				const overridden = staged !== undefined ? !staged.clear : user[name] !== undefined;
-				return { text, overridden, invalid: false };
+				const configured = ready ? String(value[name] ?? "").trim() !== "" : false;
+				// apiToken 掩码：已配置且未聚焦且无草稿 → 星号占位；聚焦后显示空草稿（placeholder 提示替换）。
+				const display = name === "apiToken" && configured && staged === undefined
+					? (focused[name] === true ? "" : MASK)
+					: text;
+				return { text, display, overridden, invalid: false, configured, focused: focused[name] === true };
 			}
 
 			function project() {
 				const snap = scope.getSnapshot();
 				const ready = snap.status === "ready";
+				// 判定“已配置”用已保存的存储值（snap.value），不受未保存草稿影响：
+				// baseUrl 与 apiToken 都已填写才视为已配置（与 jumpserver 卡片同语义）。
+				const stored = (ready && snap.value) || {};
 				const out = {
 					available: ready,
 					writable: snap.writable !== false,
@@ -165,6 +208,8 @@ window.__ModuleLoader__.load({
 					invalid: false,
 					saving,
 					failed,
+					saved,
+					configured: Boolean(String(stored.baseUrl ?? "").trim() && String(stored.apiToken ?? "").trim()),
 				};
 				for (const name of FIELDS) out[name] = fieldState(name);
 				return out;
@@ -174,22 +219,28 @@ window.__ModuleLoader__.load({
 
 			scope.subscribe(() => emit());
 
+			const clearTransient = () => { saved = false; failed = false; };
+
 			return {
 				store,
 				actions: {
 					edit: (name, text) => {
 						draft[name] = { text, clear: text === "" };
-						failed = false;
+						clearTransient();
 						emit();
 					},
 					resetField: (name) => {
 						draft[name] = { text: "", clear: true };
-						failed = false;
+						clearTransient();
+						emit();
+					},
+					focus: (name, value) => {
+						focused[name] = value;
 						emit();
 					},
 					discard: () => {
 						draft = {};
-						failed = false;
+						clearTransient();
 						emit();
 					},
 					save: () => {
@@ -212,7 +263,19 @@ window.__ModuleLoader__.load({
 							}
 						};
 						run().then(
-							() => { draft = {}; saving = false; emit(); },
+							() => { draft = {}; saving = false; saved = true; emit(); },
+							() => { saving = false; failed = true; emit(); },
+						);
+					},
+					remove: (name, confirmText) => {
+						if (!window.confirm(confirmText)) return;
+						delete draft[name];
+						focused[name] = false;
+						saving = true;
+						failed = false;
+						emit();
+						scope.unset(name).then(
+							() => { saving = false; saved = true; emit(); },
 							() => { saving = false; failed = true; emit(); },
 						);
 					},
@@ -242,35 +305,47 @@ window.__ModuleLoader__.load({
 			);
 		}
 
-		/** 复刻官方 ValueField 的字段行。 */
+		/** 复刻官方 ValueField 的字段行（支持状态徽标、敏感值掩码、移除按钮，对齐 jumpserver 卡片）。 */
 		function ValueField(props) {
 			return React.createElement(
 				"div", { className: "dsh-oac-field" },
 				React.createElement(
 					"div", { className: "dsh-oac-head" },
 					React.createElement("label", { className: "dsh-oac-label", htmlFor: props.id }, props.label),
-					props.overridden
-						? React.createElement(
-							"span", { className: "dsh-oac-badges" },
-							React.createElement("span", { className: "dsh-oac-badge" }, props.overriddenLabel),
-							React.createElement("button", {
+					React.createElement(
+						"span", { className: "dsh-oac-badges" },
+						React.createElement(
+							"span", { className: "dsh-oac-badge" + (props.statusOk ? " dsh-oac-badgeOk" : ""), role: "status" },
+							props.statusOk ? props.okLabel : props.noLabel,
+						),
+						props.overridden
+							? React.createElement("span", { className: "dsh-oac-badge" }, props.overriddenLabel)
+							: null,
+						props.configured && !props.disabled
+							? React.createElement("button", {
 								type: "button",
 								className: "dsh-oac-reset",
 								disabled: props.disabled,
-								onClick: props.onReset,
-							}, props.resetLabel),
-						)
-						: null,
+								onClick: props.onRemove,
+							}, props.removeLabel)
+							: null,
+					),
 				),
 				React.createElement("input", {
 					id: props.id,
 					className: "dsh-oac-input",
 					type: props.password ? "password" : "text",
-					value: props.text,
+					value: props.display,
 					placeholder: props.placeholder ?? "",
 					autoComplete: props.password ? "off" : undefined,
 					disabled: props.disabled,
-					onChange: (event) => { props.onEdit(event.currentTarget.value); },
+					onFocus: props.onFocus,
+					onBlur: props.onBlur,
+					onChange: (event) => {
+						let v = event.currentTarget.value;
+						if (props.password && v.startsWith(MASK)) v = v.slice(MASK.length);
+						props.onEdit(v);
+					},
 				}),
 				React.createElement("p", { className: "dsh-oac-hint" }, props.hint),
 			);
@@ -301,6 +376,9 @@ window.__ModuleLoader__.load({
 						React.createElement("span", { className: "dsh-oac-name" }, title),
 						React.createElement("span", { className: "dsh-oac-description" }, t("cardDescription")),
 					),
+					state.configured
+						? React.createElement("span", { className: "dsh-oac-badge dsh-oac-badgeOk", role: "status" }, t("configured"))
+						: React.createElement("span", { className: "dsh-oac-badge", role: "status" }, t("notConfigured")),
 					state.dirty ? React.createElement("span", { className: "dsh-oac-pending" }, t("unsaved")) : null,
 					React.createElement(ChevronIcon, { open }),
 				),
@@ -312,45 +390,60 @@ window.__ModuleLoader__.load({
 							id: "outline-auto-baseUrl",
 							label: t("baseUrl"),
 							hint: t("baseUrlHint"),
+							statusOk: state.baseUrl.configured,
+							okLabel: t("configured"),
+							noLabel: t("notConfigured"),
 							overriddenLabel: t("overridden"),
-							resetLabel: t("reset"),
-							text: state.baseUrl.text,
+							removeLabel: t("removeUrl"),
+							display: state.baseUrl.text,
 							overridden: state.baseUrl.overridden,
-							placeholder: t("emptyPlaceholder"),
+							configured: state.baseUrl.configured,
+							placeholder: state.baseUrl.configured ? t("keepUrlPlaceholder") : t("emptyPlaceholder"),
 							disabled: !state.writable,
 							onEdit: (text) => { props.edit("baseUrl", text); },
-							onReset: () => { props.resetField("baseUrl"); },
+							onRemove: () => { props.remove("baseUrl", t("confirmRemoveUrl")); },
 						}),
 						React.createElement(ValueField, {
 							id: "outline-auto-apiToken",
 							label: t("apiToken"),
-							hint: t("apiTokenHint"),
+							hint: state.apiToken.configured ? t("tokenHintConfigured") : t("apiTokenHint"),
+							statusOk: state.apiToken.configured,
+							okLabel: t("configured"),
+							noLabel: t("notConfigured"),
 							overriddenLabel: t("overridden"),
-							resetLabel: t("reset"),
-							text: state.apiToken.text,
+							removeLabel: t("removeToken"),
+							display: state.apiToken.display,
 							overridden: state.apiToken.overridden,
-							placeholder: t("emptyPlaceholder"),
+							configured: state.apiToken.configured,
+							placeholder: state.apiToken.configured ? t("keepTokenPlaceholder") : t("emptyPlaceholder"),
 							password: true,
 							disabled: !state.writable,
 							onEdit: (text) => { props.edit("apiToken", text); },
-							onReset: () => { props.resetField("apiToken"); },
+							onFocus: () => { props.focus("apiToken", true); },
+							onBlur: () => { props.focus("apiToken", false); },
+							onRemove: () => { props.remove("apiToken", t("confirmRemoveToken")); },
 						}),
 						React.createElement(ValueField, {
-							id: "outline-auto-protectedCollections",
-							label: t("protectedCollections"),
-							hint: t("protectedCollectionsHint"),
+							id: "outline-auto-writablePaths",
+							label: t("writablePaths"),
+							hint: t("writablePathsHint"),
+							statusOk: state.writablePaths.configured,
+							okLabel: t("writableMode"),
+							noLabel: t("readonlyMode"),
 							overriddenLabel: t("overridden"),
-							resetLabel: t("reset"),
-							text: state.protectedCollections.text,
-							overridden: state.protectedCollections.overridden,
+							removeLabel: t("removeWritable"),
+							display: state.writablePaths.text,
+							overridden: state.writablePaths.overridden,
+							configured: state.writablePaths.configured,
 							placeholder: t("emptyPlaceholder"),
 							disabled: !state.writable,
-							onEdit: (text) => { props.edit("protectedCollections", text); },
-							onReset: () => { props.resetField("protectedCollections"); },
+							onEdit: (text) => { props.edit("writablePaths", text); },
+							onRemove: () => { props.remove("writablePaths", t("confirmRemoveWritable")); },
 						}),
 						React.createElement(
 							"div", { className: "dsh-oac-footer" },
 							state.failed ? React.createElement("p", { className: "dsh-oac-failed", role: "status" }, t("saveFailed")) : null,
+							state.saved && !state.dirty ? React.createElement("p", { className: "dsh-oac-msg", role: "status" }, t("saved")) : null,
 							React.createElement("button", {
 								type: "button",
 								className: "dsh-oac-discard",
@@ -373,14 +466,15 @@ window.__ModuleLoader__.load({
 			injectStyles();
 			ctx.effect(() => ctx.locale.register(NS, { zh, en }), "dsh-outline-auto: settings card locale");
 			const controller = createController(ctx.settingsScope.bind({ namespace: NS_KEY }));
-			ctx.slots.register({
+			// keyed 槽位按 priority 升序排列（order 无效）：priority -1 使本卡片排在所有
+			// 默认 priority 0 的卡片之前；inject 声明式注册与 jumpserver/grafana 一致。
+			ctx.slots.inject("settings.plugin.item", () => ctx.slots.register({
 				name: "settings.plugin.item",
-				id: "outline-auto",
 				key: NS_KEY,
-				order: 30,
+				priority: -1,
 				locale: NS,
 				inject: () => ({ hooks: { outlineAutoCard: controller.store }, ...controller.actions }),
-			}, OutlineCard);
+			}, OutlineCard));
 		}
 
 		const inject = ["slots", "locale", "settingsScope"];

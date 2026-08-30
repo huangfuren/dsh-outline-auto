@@ -10,8 +10,8 @@ export interface Config {
   timeoutMs: number
   /** outline_search 默认返回条数 */
   searchLimit: number
-  /** 受保护集合名（逗号分隔），禁止在这些集合创建/更新/删除文档；默认不包含任何组织专属名称 */
-  protectedCollections?: string
+  /** 可写目录路径（逗号分隔）：仅这些目录及其全部子级允许创建/更新/删除文档；留空 = 全库只读（默认） */
+  writablePaths?: string
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -19,7 +19,7 @@ export const Config: Schema<Config> = Schema.object({
   apiToken: Schema.string().description('Outline API token；环境变量 OUTLINE_API_TOKEN 优先'),
   timeoutMs: Schema.number().min(1000).default(15000).description('HTTP 请求超时（毫秒）'),
   searchLimit: Schema.number().min(1).max(25).default(10).description('outline_search 默认返回条数'),
-  protectedCollections: Schema.string().default('').description('受保护集合名（逗号分隔），禁止写入；默认无组织专属名称'),
+  writablePaths: Schema.string().default('').description('可写目录路径（逗号分隔），如 集合A,集合B/目录1；留空 = 全库只读（默认）'),
 })
 
 export type { Context }

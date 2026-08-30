@@ -19,7 +19,7 @@ const ctx = {
   on: () => () => {},
   get: (name) => name === 'approval' ? { request: async () => 'allowed-once' } : undefined,
 }
-apply(ctx, { baseUrl, apiToken: 'test-token', timeoutMs: 5000, searchLimit: 5 })
+apply(ctx, { baseUrl, apiToken: 'test-token', timeoutMs: 5000, searchLimit: 5, writablePaths: '测试集合' })
 const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool]))
 const exec = {}
 let failures = 0

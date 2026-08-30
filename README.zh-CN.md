@@ -4,7 +4,7 @@
 
 DeepSeek Harness 的 Outline 插件：在对话中搜索、读取并在用户审批后创建、更新或删除文档。插件只连接用户配置的 Outline 实例，不携带任何组织内部地址、token、集合名或文档内容。
 
-> 当前版本：0.2.2。支持的 DeepSeek Harness 基线为 `0.1.1-rc.2`，Node.js 需要 22.13 或更高版本。
+> 当前版本：0.3.0。支持的 DeepSeek Harness 基线为 `0.1.1-rc.2`，Node.js 需要 22.13 或更高版本。
 
 ## 功能
 
@@ -61,9 +61,13 @@ dsh plugin --profile web why dsh-outline-auto
 | --- | --- |
 | Service URL | Outline 实例根地址，例如 `https://outline.example.com` |
 | API Token | 在 Outline 的 API keys 页面创建 |
-| Protected collections | 逗号分隔的受保护集合名；每个部署自行配置 |
+| 可写目录（留空 = 只读） | 逗号分隔的目录路径，如 `集合A,集合B/目录1`；仅这些目录及其全部子级允许写入 |
 
 也可以使用环境变量 `OUTLINE_BASE_URL` 和 `OUTLINE_API_TOKEN`，或在 `cordis.patch.yml` 的插件配置行中设置。公开包不得把内部集合名写入 schema 默认值、界面文案、测试数据或示例 URL。
+
+**v0.3.0 默认只读**：未配置可写目录时，所有写工具（`outline_create` / `outline_update_document` / `outline_delete`）直接拒绝执行，连审批弹窗都不会出现。要允许写入，需列出可写的目录：`集合B/目录1` 覆盖该目录及其全部子级，单独的 `集合A` 覆盖整个集合。目标路径解析失败（集合不存在、目录不可见、文档被移动）一律拒绝——写入永远 fail-closed。
+
+**从 0.2.x 升级**：0.3.0 用 `writablePaths` 白名单取代了 `protectedCollections` 黑名单。升级后**未配置可写目录前所有写入都会被拒绝**；之前用黑名单保护的集合，只需不把它列入 `writablePaths`（未列出 = 不可写）。请删除插件配置行里的 `protectedCollections`，并把 `writablePaths` 设为实际要写入的目录。
 
 ## 兼容性与发布检查
 

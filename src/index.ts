@@ -7,7 +7,8 @@ import { OutlineClient } from './client.js'
 import {
   outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool,
   outlineResolvePathTool, outlineCreateTool, outlineUpdateDocumentTool, outlineDeleteTool,
-  outlineListChildrenTool, outlineDocTemplateTool, buildCreateApprovalReason, resolveWriteGuard, FORBIDDEN_WRITE_COLLECTIONS,
+  outlineListChildrenTool, outlineDocTemplateTool, buildCreateApprovalReason, resolveWriteGuard,
+  parseWritablePaths, resolvePathGuard,
 } from './tools.js'
 import type { OutlineCollection } from './client.js'
 
@@ -38,14 +39,25 @@ export function apply(ctx: Context, config: Config = {} as Config) {
     return new OutlineClient({ baseUrl, apiToken, timeoutMs: config.timeoutMs ?? 15000 })
   }
 
-  // 受保护集合：settings 用户层 → 插件配置 → 脱敏的空默认值。
-  const getProtected = (): string[] => {
+  // 可写目录白名单：settings 用户层 → 插件配置 → 默认空（只读模式）。
+  const getWritablePaths = (): string => {
     const s = settingsSource()
-    const raw = (s.protectedCollections ?? config.protectedCollections ?? FORBIDDEN_WRITE_COLLECTIONS.join(','))
-    return raw.split(',').map((x) => x.trim()).filter((x) => x !== '')
+    return (s.writablePaths ?? config.writablePaths ?? '').trim()
   }
 
-  installSettingsSection(ctx, SETTINGS_NS, Config, {} as Config, {
+  // settings 的 base 层 = 插件配置行 + 环境变量（env 优先于配置行）。
+  // 这样用户层未覆盖时解析值仍含部署连接信息，客户端卡片据此显示“已配置”，
+  // 且卡片字段能回显部署默认值（apiToken 由客户端掩码，不回显明文）。
+  const settingsBase: Config = {
+    ...config,
+    ...(config.baseUrl === undefined || config.baseUrl === ''
+      ? (process.env.OUTLINE_BASE_URL ? { baseUrl: process.env.OUTLINE_BASE_URL } : {})
+      : {}),
+    ...(config.apiToken === undefined || config.apiToken === ''
+      ? (process.env.OUTLINE_API_TOKEN ? { apiToken: process.env.OUTLINE_API_TOKEN } : {})
+      : {}),
+  }
+  installSettingsSection(ctx, SETTINGS_NS, Config, settingsBase, {
     setSource: (current) => {
       settingsSource = current
     },
@@ -59,9 +71,9 @@ export function apply(ctx: Context, config: Config = {} as Config) {
   ctx.tools.register(outlineResolvePathTool(makeClient))
   ctx.tools.register(outlineListChildrenTool(makeClient))
   ctx.tools.register(outlineDocTemplateTool())
-  ctx.tools.register(outlineCreateTool(makeClient, getProtected))
-  ctx.tools.register(outlineUpdateDocumentTool(makeClient, getProtected))
-  ctx.tools.register(outlineDeleteTool(makeClient, getProtected, async (reason, exec) => {
+  ctx.tools.register(outlineCreateTool(makeClient, getWritablePaths))
+  ctx.tools.register(outlineUpdateDocumentTool(makeClient, getWritablePaths))
+  ctx.tools.register(outlineDeleteTool(makeClient, getWritablePaths, async (reason, exec) => {
     const approval = ctx.get('approval')
     if (approval === undefined) return false
     const outcome = await approval.request({
@@ -73,64 +85,80 @@ export function apply(ctx: Context, config: Config = {} as Config) {
     return outcome === 'allowed-once'
   }))
 
-  // 写工具审批闸：create/update/delete 需用户确认；受保护集合直接拒绝（连审批都不弹）。
+  // 写工具审批闸：create/update/delete 需用户确认；目录白名单或权限不满足时直接拒绝（连审批都不弹）。
   ctx.on('tools/pre-execute', async (exec, next) => {
     const name = exec.name
     const args = (exec.arguments ?? {}) as Record<string, string | undefined>
 
+    if (name !== 'outline_create' && name !== 'outline_update_document' && name !== 'outline_delete') {
+      return next()
+    }
+
+    const client = makeClient()
+    // ① 目录白名单校验（fail-closed；空白名单 = 只读模式，直接拒绝）
+    let collections: OutlineCollection[] = []
+    try {
+      collections = await client.listCollections()
+    } catch {
+      // collections 为空 → resolveWriteGuard fails closed when it cannot verify the target
+    }
+    const pathGuard = await (async () => {
+      try {
+        if (name === 'outline_create') {
+          const a = args as { collectionId?: string; parentDocumentId?: string }
+          return await resolvePathGuard(
+            client,
+            { kind: 'create', collectionId: a.collectionId ?? '', parentDocumentId: a.parentDocumentId },
+            parseWritablePaths(getWritablePaths()),
+            collections,
+          )
+        }
+        return await resolvePathGuard(client, { kind: 'doc', docId: args.id ?? '' }, parseWritablePaths(getWritablePaths()), collections)
+      } catch {
+        return '无法解析写入目标路径：目标集合或文档不可见。为避免误写，本次操作已拒绝。'
+      }
+    })()
+    if (pathGuard !== null) return { kind: 'deny', reason: pathGuard }
+
+    // ② 集合存在与 token 权限
+    let collectionId: string | undefined
+    try {
+      collectionId = name === 'outline_create'
+        ? (args as { collectionId?: string }).collectionId
+        : (await client.getDocument(args.id ?? '')).collectionId
+    } catch {
+      // resolveWriteGuard deliberately denies an unverifiable target.
+    }
+    const guard = resolveWriteGuard(collections, collectionId ?? '')
+    if (guard !== null) return { kind: 'deny', reason: guard }
+
+    // ③ 审批
     if (name === 'outline_create') {
       const a = args as { collectionId?: string; title?: string; text?: string; parentDocumentId?: string }
       let collectionName: string | undefined
       let resolvedPath: string[] | undefined
-      let collections: OutlineCollection[] = []
-      try {
-        collections = await makeClient().listCollections()
-        collectionName = collections.find((c) => c.id === a.collectionId)?.name
-      } catch {
-        // Keep collections empty: resolveWriteGuard fails closed when it cannot
-        // verify the target instead of allowing a write on a network error.
-        collectionName = undefined
-      }
+      collectionName = collections.find((c) => c.id === a.collectionId)?.name
       if (a.parentDocumentId !== undefined && a.parentDocumentId !== '') {
         try {
-          resolvedPath = await makeClient().resolveDocumentPath(a.parentDocumentId)
+          resolvedPath = await client.resolveDocumentPath(a.parentDocumentId)
         } catch {
           resolvedPath = undefined
         }
       }
-      const guard = resolveWriteGuard(collections, a.collectionId ?? '', getProtected())
-      if (guard !== null) return { kind: 'deny', reason: guard }
       return { kind: 'ask', reason: buildCreateApprovalReason(a, collectionName, resolvedPath) }
     }
 
-    if (name === 'outline_update_document' || name === 'outline_delete') {
-      const id = args.id ?? ''
-      if (id === '') return next()
-      let docPath: string[] | undefined
-      let collectionId: string | undefined
-      try {
-        const client = makeClient()
-        docPath = await client.resolveDocumentPath(id)
-        collectionId = (await client.getDocument(id)).collectionId
-      } catch {
-        // 解析失败仍继续走 ask（reason 里看不到路径也至少让用户确认操作）
-      }
-      let collections: OutlineCollection[] = []
-      try {
-        collections = await makeClient().listCollections()
-      } catch {
-        // resolveWriteGuard deliberately denies an unverifiable target.
-      }
-      const guard = resolveWriteGuard(collections, collectionId ?? '', getProtected())
-      if (guard !== null) return { kind: 'deny', reason: guard }
-      const where = docPath !== undefined && docPath.length > 0 ? `路径：${docPath.join(' / ')}` : `文档 id：${id}`
-      if (name === 'outline_update_document') {
-        const changes = [args.title !== undefined ? '改标题' : '', args.text !== undefined ? '改正文' : ''].filter(Boolean).join(' + ')
-        return { kind: 'ask', reason: `将更新 Outline 文档：\n${where}\n变更：${changes}` }
-      }
-      return { kind: 'ask', reason: `将删除 Outline 文档（第 1 次确认）：\n${where}` }
+    let docPath: string[] | undefined
+    try {
+      docPath = await client.resolveDocumentPath(args.id ?? '')
+    } catch {
+      // 解析失败仍继续走 ask（reason 里看不到路径也至少让用户确认操作）
     }
-
-    return next()
+    const where = docPath !== undefined && docPath.length > 0 ? `路径：${docPath.join(' / ')}` : `文档 id：${args.id ?? ''}`
+    if (name === 'outline_update_document') {
+      const changes = [args.title !== undefined ? '改标题' : '', args.text !== undefined ? '改正文' : ''].filter(Boolean).join(' + ')
+      return { kind: 'ask', reason: `将更新 Outline 文档：\n${where}\n变更：${changes}` }
+    }
+    return { kind: 'ask', reason: `将删除 Outline 文档（第 1 次确认）：\n${where}` }
   })
 }

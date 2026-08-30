@@ -347,7 +347,7 @@ describe('OutlineClient', () => {
       apiToken: 'tok',
       fetchImpl: stubFetch(async (url, init) => {
         if (String(url).includes('/api/collections.list')) {
-          return { status: 200, body: { data: [{ id: 'col-1', name: '运维集合', permission: 'read_write' }] } }
+          return { status: 200, body: { data: [{ id: 'col-1', name: '集合A', permission: 'read_write' }] } }
         }
         const body = JSON.parse(String(init.body)) as { id?: string }
         const doc = docs.get(body.id ?? '')
@@ -357,6 +357,6 @@ describe('OutlineClient', () => {
       }),
     })
     const path = await client.resolveDocumentPath('leaf')
-    expect(path).toEqual(['运维集合', '根目录', '中层', '叶子'])
+    expect(path).toEqual(['集合A', '根目录', '中层', '叶子'])
   })
 })

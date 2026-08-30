@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool, outlineResolvePathTool, outlineCreateTool, outlineUpdateDocumentTool, outlineDeleteTool, outlineListChildrenTool, outlineDocTemplateTool, buildCreateApprovalReason, resolveWriteGuard, FORBIDDEN_WRITE_COLLECTIONS } from '../src/tools.js'
+import {
+  outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool, outlineResolvePathTool,
+  outlineCreateTool, outlineUpdateDocumentTool, outlineDeleteTool, outlineListChildrenTool, outlineDocTemplateTool,
+  buildCreateApprovalReason, resolveWriteGuard, resolvePathGuard, parseWritablePaths,
+} from '../src/tools.js'
 import { OutlineApiError } from '../src/errors.js'
 import type { OutlineClient } from '../src/client.js'
 
@@ -8,6 +12,7 @@ function fakeClient(overrides: Partial<OutlineClient> = {}): OutlineClient {
     searchDocuments: async (query: string) => ({ total: 1, hits: [{ id: 'doc-1', title: query, url: '/d', snippet: 's', collectionId: '', updatedAt: '' }] }),
     getDocument: async (id: string) => ({ id, title: 'T', url: '/d', text: 'body', updatedAt: '' }),
     countDocuments: async () => 42,
+    resolveDocumentPath: async (docId: string) => [docId],
     ...overrides,
   } as unknown as OutlineClient
 }
@@ -72,69 +77,147 @@ describe('outline_list_collections', () => {
 })
 
 describe('outline_create', () => {
-  it('execute 传入参数并返回结果', async () => {
+  it('execute 传入参数并返回结果（目标在白名单内）', async () => {
     let seen: any
     const tool = outlineCreateTool(() => fakeClient({
-      listCollections: async () => [{ id: 'col-1', name: '测试集合', permission: 'read_write' }],
+      listCollections: async () => [{ id: 'col-1', name: '集合A', permission: 'read_write' }],
+      resolveDocumentPath: async () => ['集合A', '父目录'],
       createDocument: async (input) => { seen = input; return { id: 'd1', url: 'https://outline.example.com/doc/d1', title: input.title, published: true } },
-    }), () => ['受保护集合'])
+    }), () => '集合A')
     const result = await tool.execute({ collectionId: 'col-1', title: 'T', text: 'B', parentDocumentId: 'parent-1' }, exec) as any
     expect(seen).toEqual({ collectionId: 'col-1', parentDocumentId: 'parent-1', title: 'T', text: 'B', publish: undefined })
     expect(result.url).toContain('doc/d1')
   })
 
-  it('execute 拒绝向受保护集合写入', async () => {
-    const tool = outlineCreateTool(() => fakeClient({ listCollections: async () => [{ id: 'ops', name: '受保护集合', permission: 'read_write' }] }), () => ['受保护集合'])
-    await expect(tool.execute({ collectionId: 'ops', title: 'T', text: 'B' }, exec)).rejects.toThrow('禁止')
+  it('未配置白名单时拒绝（只读模式，连审批都不弹）', async () => {
+    const tool = outlineCreateTool(() => fakeClient({ listCollections: async () => [{ id: 'col-1', name: '集合A', permission: 'read_write' }] }), () => '')
+    await expect(tool.execute({ collectionId: 'col-1', title: 'T', text: 'B' }, exec)).rejects.toThrow('只读模式')
+  })
+
+  it('目标集合不存在时拒绝（失败关闭）', async () => {
+    const tool = outlineCreateTool(() => fakeClient({ listCollections: async () => [{ id: 'col-1', name: '集合A', permission: 'read_write' }] }), () => '集合A')
+    await expect(tool.execute({ collectionId: 'col-9', title: 'T', text: 'B' }, exec)).rejects.toThrow('无法确认写入目标集合')
+  })
+
+  it('目标在白名单外时拒绝', async () => {
+    const tool = outlineCreateTool(() => fakeClient({ listCollections: async () => [{ id: 'col-2', name: '其它集合', permission: 'read_write' }] }), () => '集合A')
+    await expect(tool.execute({ collectionId: 'col-2', title: 'T', text: 'B' }, exec)).rejects.toThrow('不在可写目录内')
+  })
+})
+
+describe('parseWritablePaths', () => {
+  it('空串解析为空列表', () => {
+    expect(parseWritablePaths('')).toEqual([])
+    expect(parseWritablePaths('  ,,  ')).toEqual([])
+  })
+  it('解析集合级条目', () => {
+    expect(parseWritablePaths(' 集合A ')).toEqual([{ collectionName: '集合A', segments: [] }])
+  })
+  it('解析目录级条目（逗号分隔）', () => {
+    expect(parseWritablePaths('集合A,集合B/目录1/子目录2')).toEqual([
+      { collectionName: '集合A', segments: [] },
+      { collectionName: '集合B', segments: ['目录1', '子目录2'] },
+    ])
+  })
+  it('过滤空白段', () => {
+    expect(parseWritablePaths('集合A/目录1,,集合B/ /目录2')).toEqual([
+      { collectionName: '集合A', segments: ['目录1'] },
+      { collectionName: '集合B', segments: ['目录2'] },
+    ])
+  })
+})
+
+describe('resolvePathGuard', () => {
+  const collections = [
+    { id: 'col-1', name: '集合A', permission: 'read_write' },
+    { id: 'col-2', name: '集合B', permission: 'read_write' },
+  ]
+
+  it('白名单为空 → 只读模式拒绝', async () => {
+    const err = await resolvePathGuard(fakeClient(), { kind: 'create', collectionId: 'col-1' }, [], collections)
+    expect(err).toContain('只读模式')
+  })
+
+  it('集合级白名单放行集合根级创建', async () => {
+    const err = await resolvePathGuard(fakeClient(), { kind: 'create', collectionId: 'col-1' }, parseWritablePaths('集合A'), collections)
+    expect(err).toBeNull()
+  })
+
+  it('集合级白名单放行目录内任意层级（create 父目录）', async () => {
+    const client = fakeClient({ resolveDocumentPath: async () => ['集合A', '目录1', '子目录'] })
+    const err = await resolvePathGuard(client, { kind: 'create', collectionId: 'col-1', parentDocumentId: 'p' }, parseWritablePaths('集合A'), collections)
+    expect(err).toBeNull()
+  })
+
+  it('目录级白名单前缀匹配（doc 目标含全部子级）', async () => {
+    const client = fakeClient({ resolveDocumentPath: async () => ['集合A', '目录1', '子目录', '文档X'] })
+    const err = await resolvePathGuard(client, { kind: 'doc', docId: 'd' }, parseWritablePaths('集合A/目录1'), collections)
+    expect(err).toBeNull()
+  })
+
+  it('目录级白名单不匹配兄弟目录', async () => {
+    const client = fakeClient({ resolveDocumentPath: async () => ['集合A', '目录2', '文档X'] })
+    const err = await resolvePathGuard(client, { kind: 'doc', docId: 'd' }, parseWritablePaths('集合A/目录1'), collections)
+    expect(err).toContain('不在可写目录内')
+  })
+
+  it('集合不匹配时拒绝', async () => {
+    const client = fakeClient({ resolveDocumentPath: async () => ['集合B', '文档X'] })
+    const err = await resolvePathGuard(client, { kind: 'doc', docId: 'd' }, parseWritablePaths('集合A'), collections)
+    expect(err).toContain('不在可写目录内')
+  })
+
+  it('create 目标集合不存在 → 拒绝（失败关闭）', async () => {
+    const err = await resolvePathGuard(fakeClient(), { kind: 'create', collectionId: 'col-9' }, parseWritablePaths('集合A'), collections)
+    expect(err).toContain('无法确认写入目标集合')
+  })
+
+  it('目标路径解析失败 → 拒绝', async () => {
+    const client = fakeClient({ resolveDocumentPath: async () => { throw new Error('boom') } })
+    const err = await resolvePathGuard(client, { kind: 'doc', docId: 'd' }, parseWritablePaths('集合A'), collections)
+    expect(err).toContain('无法解析写入目标路径')
   })
 })
 
 describe('resolveWriteGuard', () => {
-  it('禁止在受保护集合写入', () => {
-    const err = resolveWriteGuard([{ id: 'c1', name: '受保护集合', permission: 'read_write' }], 'c1', ['受保护集合'])
-    expect(err).toContain('禁止')
-  })
   it('普通集合放行', () => {
-    expect(resolveWriteGuard([{ id: 'c2', name: '测试集合', permission: 'read_write' }], 'c2', ['受保护集合'])).toBeNull()
+    expect(resolveWriteGuard([{ id: 'c2', name: '测试集合', permission: 'read_write' }], 'c2')).toBeNull()
   })
   it('集合不可确认时拒绝写入（失败关闭）', () => {
-    expect(resolveWriteGuard([], 'c9', ['受保护集合'])).toContain('无法确认')
+    expect(resolveWriteGuard([], 'c9')).toContain('无法确认')
   })
   it('只读权限集合拒绝写入', () => {
-    expect(resolveWriteGuard([{ id: 'c3', name: '只读集合', permission: 'read_only' }], 'c3', [])).toContain('禁止')
-  })
-  it('发布包默认不包含组织专属保护名称', () => {
-    expect(FORBIDDEN_WRITE_COLLECTIONS).toEqual([])
+    expect(resolveWriteGuard([{ id: 'c3', name: '只读集合', permission: 'read_only' }], 'c3')).toContain('禁止')
   })
 })
 
 describe('outline_resolve_path', () => {
   it('解析 集合/目录1/目录2 路径', async () => {
     const tool = outlineResolvePathTool(() => fakeClient({
-      listCollections: async () => [{ id: 'col-1', name: '运维集合', permission: 'read_write' }],
+      listCollections: async () => [{ id: 'col-1', name: '集合A', permission: 'read_write' }],
       searchDocuments: async (q: string, _l: number, collectionId?: string) => {
-        if (q === '个人笔记') return { total: 1, hits: [{ id: 'root-1', title: '《个人笔记》', url: '/d', snippet: '', collectionId: collectionId ?? 'col-1', updatedAt: '' }] }
+        if (q === '目录1') return { total: 1, hits: [{ id: 'root-1', title: '目录1', url: '/d', snippet: '', collectionId: collectionId ?? 'col-1', updatedAt: '' }] }
         return { total: 0, hits: [] }
       },
       listChildDocuments: async (parentId: string) => parentId === 'root-1'
-        ? [{ id: 'leaf-1', title: '随手记-张三', url: '/d', snippet: '', collectionId: 'col-1', updatedAt: '', parentDocumentId: 'root-1' }]
+        ? [{ id: 'leaf-1', title: '子目录-2', url: '/d', snippet: '', collectionId: 'col-1', updatedAt: '', parentDocumentId: 'root-1' }]
         : [],
     }))
-    const result = await tool.execute({ path: '运维集合/个人笔记/随手记张三' }, exec) as any
-    expect(result).toMatchObject({ collectionId: 'col-1', parentDocumentId: 'leaf-1', path: ['运维集合', '《个人笔记》', '随手记-张三'] })
+    const result = await tool.execute({ path: '集合A/目录1/子目录2' }, exec) as any
+    expect(result).toMatchObject({ collectionId: 'col-1', parentDocumentId: 'leaf-1', path: ['集合A', '目录1', '子目录-2'] })
   })
 
   it('集合不存在时报错并列出候选', async () => {
-    const tool = outlineResolvePathTool(() => fakeClient({ listCollections: async () => [{ id: 'col-1', name: '运维集合', permission: 'read_write' }] }))
+    const tool = outlineResolvePathTool(() => fakeClient({ listCollections: async () => [{ id: 'col-1', name: '集合A', permission: 'read_write' }] }))
     await expect(tool.execute({ path: '不存在的集合/x' }, exec)).rejects.toThrow('找不到集合')
   })
 
   it('子目录找不到时报错', async () => {
     const tool = outlineResolvePathTool(() => fakeClient({
-      listCollections: async () => [{ id: 'col-1', name: '运维集合', permission: 'read_write' }],
+      listCollections: async () => [{ id: 'col-1', name: '集合A', permission: 'read_write' }],
       searchDocuments: async () => ({ total: 0, hits: [] }),
     }))
-    await expect(tool.execute({ path: '运维集合/不存在的目录' }, exec)).rejects.toThrow('找不到')
+    await expect(tool.execute({ path: '集合A/不存在的目录' }, exec)).rejects.toThrow('找不到')
   })
 })
 
@@ -148,26 +231,36 @@ describe('outline_search 过滤', () => {
 })
 
 describe('outline_update_document', () => {
-  it('更新标题并传参', async () => {
+  it('更新标题并传参（目标在白名单内）', async () => {
     let seen: any
     const tool = outlineUpdateDocumentTool(() => fakeClient({
       getDocument: async () => ({ id: 'd1', title: '旧', url: '/d', text: 'x', updatedAt: '', collectionId: 'col-1' }),
-      listCollections: async () => [{ id: 'col-1', name: '测试集合', permission: 'read_write' }],
+      listCollections: async () => [{ id: 'col-1', name: '集合A', permission: 'read_write' }],
+      resolveDocumentPath: async () => ['集合A', '旧文档'],
       updateDocument: async (id, input) => { seen = { id, ...input }; return { id, url: '/doc/d1', title: input.title ?? '旧', published: true } },
-    }), () => ['受保护集合'])
+    }), () => '集合A')
     const r = await tool.execute({ id: 'd1', title: '新标题' }, exec) as any
     expect(seen).toEqual({ id: 'd1', title: '新标题' })
     expect(r.title).toBe('新标题')
   })
-  it('受保护集合拒绝更新', async () => {
+  it('未配置白名单时拒绝更新（只读模式）', async () => {
     const tool = outlineUpdateDocumentTool(() => fakeClient({
-      getDocument: async () => ({ id: 'd1', title: 'T', url: '/d', text: 'x', updatedAt: '', collectionId: 'ops' }),
-      listCollections: async () => [{ id: 'ops', name: '受保护集合', permission: 'read_write' }],
-    }), () => ['受保护集合'])
-    await expect(tool.execute({ id: 'd1', text: 'x' }, exec)).rejects.toThrow('禁止')
+      getDocument: async () => ({ id: 'd1', title: 'T', url: '/d', text: 'x', updatedAt: '', collectionId: 'col-1' }),
+      listCollections: async () => [{ id: 'col-1', name: '集合A', permission: 'read_write' }],
+      resolveDocumentPath: async () => ['集合A', 'T'],
+    }), () => '')
+    await expect(tool.execute({ id: 'd1', text: 'x' }, exec)).rejects.toThrow('只读模式')
+  })
+  it('目标在白名单外时拒绝更新', async () => {
+    const tool = outlineUpdateDocumentTool(() => fakeClient({
+      getDocument: async () => ({ id: 'd1', title: 'T', url: '/d', text: 'x', updatedAt: '', collectionId: 'col-2' }),
+      listCollections: async () => [{ id: 'col-2', name: '其它集合', permission: 'read_write' }],
+      resolveDocumentPath: async () => ['其它集合', 'T'],
+    }), () => '集合A')
+    await expect(tool.execute({ id: 'd1', text: 'x' }, exec)).rejects.toThrow('不在可写目录内')
   })
   it('至少需要 title 或 text', async () => {
-    const tool = outlineUpdateDocumentTool(() => fakeClient(), () => ['受保护集合'])
+    const tool = outlineUpdateDocumentTool(() => fakeClient(), () => '集合A')
     await expect(tool.execute({ id: 'd1' }, exec)).rejects.toThrow('至少需要')
   })
 })
@@ -177,10 +270,10 @@ describe('outline_delete', () => {
     let asked = ''
     const tool = outlineDeleteTool(() => fakeClient({
       getDocument: async () => ({ id: 'd1', title: 'T', url: '/d', text: 'x', updatedAt: '', collectionId: 'col-1' }),
-      listCollections: async () => [{ id: 'col-1', name: '测试集合', permission: 'read_write' }],
-      resolveDocumentPath: async () => ['测试集合', 'T'],
+      listCollections: async () => [{ id: 'col-1', name: '集合A', permission: 'read_write' }],
+      resolveDocumentPath: async () => ['集合A', 'T'],
       deleteDocument: async () => ({ success: true }),
-    }), () => ['受保护集合'], async (reason, _exec) => { asked = reason; return true })
+    }), () => '集合A', async (reason, _exec) => { asked = reason; return true })
     const r = await tool.execute({ id: 'd1' }, exec) as any
     expect(asked).toContain('再次确认')
     expect(r.success).toBe(true)
@@ -188,9 +281,9 @@ describe('outline_delete', () => {
   it('第二道审批拒绝则取消删除', async () => {
     const tool = outlineDeleteTool(() => fakeClient({
       getDocument: async () => ({ id: 'd1', title: 'T', url: '/d', text: 'x', updatedAt: '', collectionId: 'col-1' }),
-      listCollections: async () => [{ id: 'col-1', name: '测试集合', permission: 'read_write' }],
-      resolveDocumentPath: async () => ['测试集合', 'T'],
-    }), () => ['受保护集合'], async () => false)
+      listCollections: async () => [{ id: 'col-1', name: '集合A', permission: 'read_write' }],
+      resolveDocumentPath: async () => ['集合A', 'T'],
+    }), () => '集合A', async () => false)
     await expect(tool.execute({ id: 'd1' }, exec)).rejects.toThrow('取消')
   })
 })
@@ -241,8 +334,8 @@ describe('outline_list_children', () => {
 
 describe('buildCreateApprovalReason', () => {
   it('包含集合名、标题与内容预览', () => {
-    const reason = buildCreateApprovalReason({ collectionId: 'col-1', title: '测试文档', text: '第一行内容，用于预览。' + '长'.repeat(200) }, '运维集合')
-    expect(reason).toContain('运维集合')
+    const reason = buildCreateApprovalReason({ collectionId: 'col-1', title: '测试文档', text: '第一行内容，用于预览。' + '长'.repeat(200) }, '集合A')
+    expect(reason).toContain('集合A')
     expect(reason).toContain('测试文档')
     expect(reason).toContain('…')
     expect(reason.length).toBeLessThan(300)
