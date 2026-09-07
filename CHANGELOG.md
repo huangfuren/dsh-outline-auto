@@ -8,6 +8,19 @@ All notable changes to this project are documented here. Release-specific notes 
 
 - Placeholder for the next release.
 
+## [v0.4.1] - 2026-09-04
+
+### Changed
+
+- **DSH 版本兼容性加固**（host + client）：
+  - `ctx.tools` 缺失时显式 warn，工具注册全部跳过而非静默崩溃
+  - `installSettingsSection` 抛错时回退 config-only 模式（搜索/读取工具仍可用）
+  - `approval` 服务加 `approval.request` 形状检查 + try/catch；抛错时 fail-closed 拒绝 delete
+  - `ctx.on('tools/pre-execute', ...)` 整体用 `typeof ctx.on === 'function'` 守卫；回调入口 try/catch，DSH 改事件签名时 fail-closed deny
+  - client 端拆 `apply()` 为 `tryActivate() + apply()`，缺 `slots/locale/settingsScope` 任一服务显式 warn
+  - client 监听 cordis `service-added` 事件，DSH 启动顺序变化时保证最终激活
+  - CSS 注入加 `data-plugin-css` 属性，兼容 DSH 头部清理策略变更
+
 ## [v0.4.0] - 2026-08-30
 
 ### Added

@@ -145,6 +145,7 @@ window.__ModuleLoader__.load({
 			const style = document.createElement("style");
 			style.id = "dsh-outline-auto-styles";
 			style.setAttribute("data-plugin", "dsh-outline-auto");
+			style.setAttribute("data-plugin-css", "dsh-outline-auto");
 			style.textContent = CSS_TEXT;
 			document.head.appendChild(style);
 		}
@@ -462,19 +463,56 @@ window.__ModuleLoader__.load({
 			);
 		}
 
-		function apply(ctx) {
+		function tryActivate(ctx) {
 			injectStyles();
-			ctx.effect(() => ctx.locale.register(NS, { zh, en }), "dsh-outline-auto: settings card locale");
-			const controller = createController(ctx.settingsScope.bind({ namespace: NS_KEY }));
-			// keyed 槽位按 priority 升序排列（order 无效）：priority -1 使本卡片排在所有
-			// 默认 priority 0 的卡片之前；使用 inject 声明式注册。
-			ctx.slots.inject("settings.plugin.item", () => ctx.slots.register({
-				name: "settings.plugin.item",
-				key: NS_KEY,
-				priority: -1,
-				locale: NS,
-				inject: () => ({ hooks: { outlineAutoCard: controller.store }, ...controller.actions }),
-			}, OutlineCard));
+			const slots = ctx.slots;
+			const locale = ctx.locale;
+			const settingsScope = ctx.settingsScope;
+			if (slots === undefined || typeof slots.inject !== 'function'
+				|| typeof slots.register !== 'function') {
+				console.warn("[dsh-outline-auto] ctx.slots unavailable; settings card not registered");
+				return false;
+			}
+			if (locale === undefined || typeof locale.register !== 'function') {
+				console.warn("[dsh-outline-auto] ctx.locale unavailable; settings card not registered");
+				return false;
+			}
+			if (settingsScope === undefined || typeof settingsScope.bind !== 'function') {
+				console.warn("[dsh-outline-auto] ctx.settingsScope unavailable; settings card not registered");
+				return false;
+			}
+			try {
+				ctx.effect(() => locale.register(NS, { zh, en }), "dsh-outline-auto: settings card locale");
+				const controller = createController(settingsScope.bind({ namespace: NS_KEY }));
+				// keyed 槽位按 priority 升序排列（order 无效）：priority -1 使本卡片排在所有
+				// 默认 priority 0 的卡片之前；使用 inject 声明式注册。
+				slots.inject("settings.plugin.item", () => slots.register({
+					name: "settings.plugin.item",
+					key: NS_KEY,
+					priority: -1,
+					locale: NS,
+					inject: () => ({ hooks: { outlineAutoCard: controller.store }, ...controller.actions }),
+				}, OutlineCard));
+				return true;
+			}
+			catch (err) {
+				console.warn("[dsh-outline-auto] activation failed: "
+					+ (err && err.message ? err.message : err));
+				return false;
+			}
+		}
+
+		function apply(ctx) {
+			if (tryActivate(ctx)) return;
+			// DSH may defer required services; wait for service-added events so
+			// the card still mounts across boot-order changes and renames.
+			if (typeof ctx.on === "function") {
+				ctx.on("service-added", (name) => {
+					if (name === "slots" || name === "locale" || name === "settingsScope") {
+						tryActivate(ctx);
+					}
+				});
+			}
 		}
 
 		const inject = ["slots", "locale", "settingsScope"];
