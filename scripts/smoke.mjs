@@ -56,6 +56,19 @@ try {
   check('outline_list_children 返回子文档', Array.isArray(children), JSON.stringify(children))
   const filtered = await byName.outline_search.execute({ query: '部署', limit: 3, collectionId: 'col-1' }, exec)
   check('outline_search collectionId 过滤', filtered.total >= 1, JSON.stringify(filtered))
+  // 验证 userId 过滤（mock server 已支持）
+  const byUser = await byName.outline_search.execute({ query: '', limit: 10, userId: 'user-2' }, exec)
+  check('outline_search userId 过滤', byUser.hits.length >= 1, `got ${byUser.hits.length} hits`)
+  // 验证 updatedAfter 过滤
+  const recent = await byName.outline_search.execute({ query: '', limit: 10, updatedAfter: '2026-03-01' }, exec)
+  check('outline_search updatedAfter 过滤', recent.hits.length >= 1, `got ${recent.hits.length} hits`)
+  // 验证 snippet 保留原始 HTML 高亮标签
+  const searchWithHtml = await byName.outline_search.execute({ query: '部署', limit: 1 }, exec)
+  check('outline_search snippet 保留原始上下文', searchWithHtml.hits[0] && typeof searchWithHtml.hits[0].snippet === 'string', JSON.stringify(searchWithHtml))
+  // 验证参数校验在 execute 层 fail-closed 兜底（pre-execute 未注册时）
+  let paramError = false
+  try { await byName.outline_update_document.execute({ id: 'doc-1' }, exec) } catch (e) { paramError = e.message?.includes('至少需要') }
+  check('outline_update_document 参数校验（execute 兜底）', paramError, 'pre-execute 未注册，走 execute 层')
   const tpl = await byName.outline_doc_template.execute({}, exec)
   check('outline_doc_template 返回模板', typeof tpl.template === 'string' && tpl.template.includes('【需求或目标】') && Array.isArray(tpl.sections), JSON.stringify(tpl.sections))
 } catch (error) {

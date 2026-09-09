@@ -193,7 +193,7 @@ export class OutlineClient {
         id: typeof document.id === 'string' ? document.id : '',
         title: OutlineClient.stripHtml(typeof document.title === 'string' ? document.title : '(无标题)'),
         url: this.absolutize(typeof document.url === 'string' ? document.url : ''),
-        snippet: OutlineClient.stripHtml(typeof record.context === 'string' ? record.context : ''),
+        snippet: typeof record.context === 'string' ? record.context : '',
         collectionId: typeof document.collectionId === 'string' ? document.collectionId : '',
         updatedAt: typeof document.updatedAt === 'string' ? document.updatedAt : '',
         ...(document.parentDocumentId !== undefined && document.parentDocumentId !== null
@@ -265,8 +265,9 @@ export class OutlineClient {
     if (input.title !== undefined && input.title !== '') payload.title = input.title
     if (input.text !== undefined && input.text !== '') payload.text = input.text
     const data = await this.request<Record<string, unknown>>(`/api/documents.update`, payload)
-    // 更新后清除该文档缓存，避免 60s 内读到旧内容
+    // 更新后清文档缓存与集合缓存，避免 60s 内读到旧内容且集合文档数与缓存不符
     this.docCache.delete(id)
+    this.collectionsCache = null
     return {
       id: typeof data.id === 'string' ? data.id : id,
       url: this.absolutize(typeof data.url === 'string' ? data.url : ''),

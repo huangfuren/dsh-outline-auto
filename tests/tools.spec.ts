@@ -266,6 +266,7 @@ describe('outline_update_document', () => {
     }), () => '集合A')
     await expect(tool.execute({ id: 'd1', text: 'x' }, exec)).rejects.toThrow('不在可写目录内')
   })
+  // 参数校验在 pre-execute 前置拦截；execute 内仍保留 fail-closed 兜底。
   it('至少需要 title 或 text', async () => {
     const tool = outlineUpdateDocumentTool(() => fakeClient(), () => '集合A')
     await expect(tool.execute({ id: 'd1' }, exec)).rejects.toThrow('至少需要')

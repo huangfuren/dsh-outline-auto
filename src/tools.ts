@@ -504,6 +504,7 @@ export function outlineUpdateDocumentTool(makeClient: () => OutlineClient, getWr
       render: (_args, value) => [{ type: 'text', text: `✏️ 已更新文档：${escapeLinkText(value.title)} → ${wrapUrl(value.url)}` }],
     },
     async execute(args) {
+      // 参数校验：pre-execute 钩子会拦截；此处做 fail-closed 兜底（防止绕过审批直调时静默成功）
       if ((args.title === undefined || args.title === '') && (args.text === undefined || args.text === '')) {
         throw new Error('outline_update_document 至少需要 title 或 text 之一')
       }

@@ -125,7 +125,7 @@ describe('OutlineClient', () => {
     expect(hit.url).toBe('https://outline.other.com/doc/x')
   })
 
-  it('snippet 与标题中的 HTML 标签会被清理', async () => {
+  it('snippet 保留原始上下文（HTML 高亮标签不被剥离，聊天层负责渲染）', async () => {
     const client = new OutlineClient({
       baseUrl: 'https://outline.example.com',
       apiToken: 'tok',
@@ -143,7 +143,9 @@ describe('OutlineClient', () => {
     })
     const { hits } = await client.searchDocuments('部署', 5)
     const [hit] = hits
-    expect(hit.snippet).toBe('TDD的本质：测试不是 验证代码，而是设计代码')
+    // snippet 保留原始 HTML（<b> 高亮、&nbsp; 实体），聊天渲染层负责转义
+    expect(hit.snippet).toBe('TDD的本质：<b>测试</b>不是&nbsp;验证代码，而是设计代码')
+    // 标题仍做 stripHtml（标题是纯文本字段，不含高亮语义）
     expect(hit.title).toBe('部署规范')
   })
 
@@ -420,7 +422,7 @@ describe('OutlineClient', () => {
     expect(calls).toBe(2)
   })
 
-  it('updateDocument 后清除该文档缓存', async () => {
+  it('updateDocument 后清除文档缓存与集合缓存', async () => {
     let calls = 0
     const client = new OutlineClient({
       baseUrl: 'https://outline.example.com',
@@ -430,13 +432,19 @@ describe('OutlineClient', () => {
         if (String(url).includes('/api/documents.update')) {
           return { status: 200, body: { data: { id: 'd1', title: '新标题', url: '/doc/d1', published: true } } }
         }
+        if (String(url).includes('/api/collections.list')) {
+          return { status: 200, body: { data: [{ id: 'col-1', name: '集合A', permission: 'read_write' }], pagination: { total: 1 } } }
+        }
         return { status: 200, body: { data: { id: 'd1', title: '新标题', url: '/doc/d1', text: 'body', updatedAt: '' } } }
       }),
     })
-    await client.getDocument('d1') // 写入缓存
+    await client.getDocument('d1') // 写入文档缓存
+    await client.listCollections() // 写入集合缓存
     await client.updateDocument('d1', { title: '新标题' })
-    await client.getDocument('d1') // 缓存已失效 → 重新请求
-    expect(calls).toBe(3) // info + update + info
+    await client.getDocument('d1') // 文档缓存已失效 → 重新请求（call 4）
+    const collections = await client.listCollections() // 集合缓存已失效 → 重新请求（call 5）
+    expect(calls).toBe(5)
+    expect(collections).toHaveLength(1)
   })
 
   it('deleteDocument 后清除文档缓存', async () => {

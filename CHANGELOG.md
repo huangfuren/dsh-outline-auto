@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here. Release-specific notes are also published on GitHub Releases.
 
+## [v0.4.2] - 2026-09-08
+
+### Fixed
+
+- **`updateDocument` 缓存失效补全**：更新文档后同步清集合缓存，避免文档数与缓存不符。
+- **search snippet 保留原始上下文**：不再对 snippet 调用 `stripHtml`，Outline 返回的高亮标签（`<b>`、`&nbsp;` 等）完整传给聊天渲染层。
+- **`update_document` 参数校验前置**：`title` 和 `text` 均为空时 pre-execute 直接 deny，不再走完路径解析再报错；execute 内保留 fail-closed 兜底。
+- **mock server 过滤支持**：`documents.search` 端点补全 `userId` / `updatedAfter` / `collectionId` 过滤逻辑，smoke 可验证。
+
 ## [Unreleased]
 
 ### Added

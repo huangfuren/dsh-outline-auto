@@ -157,6 +157,11 @@ export function apply(ctx: Context, config: Config = {} as Config) {
       return { kind: 'ask', reason: buildCreateApprovalReason(a, collectionName, resolvedPath) }
     }
 
+    // 参数校验前置：update 至少需要 title 或 text（在路径解析前拦截，避免无意义 API 调用）
+    if (name === 'outline_update_document' && (args.title === undefined || args.title === '') && (args.text === undefined || args.text === '')) {
+      return { kind: 'deny', reason: 'outline_update_document 至少需要 title 或 text 之一' }
+    }
+
     let docPath: string[] | undefined
     try {
       docPath = await client.resolveDocumentPath(args.id ?? '')

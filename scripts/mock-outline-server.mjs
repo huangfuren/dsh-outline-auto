@@ -1,9 +1,9 @@
 import http from 'node:http'
 
 const DOCS = [
-  { id: 'doc-1', title: '部署规范', url: '/doc/deploy', collectionId: 'col-1', updatedAt: '2026-01-01T00:00:00Z', text: '# 部署规范\n\n## 环境\n\n- 生产：prod.example.com\n\n## 步骤\n\n1. 构建\n2. 推送镜像\n3. 发布' },
-  { id: 'doc-2', title: '代码评审规范', url: '/doc/review', collectionId: 'col-1', updatedAt: '2026-02-01T00:00:00Z', text: '# 代码评审规范\n\n评审人需在 24 小时内完成评审。' },
-  { id: 'doc-3', title: '新员工入职指南', url: '/doc/onboarding', collectionId: 'col-2', updatedAt: '2026-03-01T00:00:00Z', text: '# 新员工入职指南\n\n欢迎加入！' },
+  { id: 'doc-1', title: '部署规范', url: '/doc/deploy', collectionId: 'col-1', authorId: 'user-1', updatedAt: '2026-01-01T00:00:00Z', text: '# 部署规范\n\n## 环境\n\n- 生产：prod.example.com\n\n## 步骤\n\n1. 构建\n2. 推送镜像\n3. 发布' },
+  { id: 'doc-2', title: '代码评审规范', url: '/doc/review', collectionId: 'col-1', authorId: 'user-2', updatedAt: '2026-02-01T00:00:00Z', text: '# 代码评审规范\n\n评审人需在 24 小时内完成评审。' },
+  { id: 'doc-3', title: '新员工入职指南', url: '/doc/onboarding', collectionId: 'col-2', authorId: 'user-1', updatedAt: '2026-03-01T00:00:00Z', text: '# 新员工入职指南\n\n欢迎加入！' },
 ]
 
 export function createMockOutlineServer() {
@@ -21,7 +21,16 @@ export function createMockOutlineServer() {
       if (req.url === '/api/documents.search') {
         const query = String(parsed.query ?? '').toLowerCase()
         const limit = Number(parsed.limit ?? 10)
-        const matches = DOCS.filter((doc) => doc.title.toLowerCase().includes(query) || doc.text.toLowerCase().includes(query))
+        const collectionId = String(parsed.collectionId ?? '').trim()
+        const userId = String(parsed.userId ?? '').trim()
+        const updatedAfter = String(parsed.updatedAfter ?? '').trim()
+        let matches = DOCS.filter((doc) => doc.title.toLowerCase().includes(query) || doc.text.toLowerCase().includes(query))
+        if (collectionId !== '') matches = matches.filter((doc) => doc.collectionId === collectionId)
+        if (userId !== '') matches = matches.filter((doc) => doc.authorId === userId)
+        if (updatedAfter !== '') {
+          const after = new Date(updatedAfter).getTime()
+          if (!Number.isNaN(after)) matches = matches.filter((doc) => new Date(doc.updatedAt).getTime() >= after)
+        }
         const hits = matches.slice(0, limit)
           .map((doc) => ({ context: doc.text.slice(0, 40), document: { id: doc.id, title: doc.title, url: doc.url, collectionId: doc.collectionId, updatedAt: doc.updatedAt } }))
         send(200, { data: hits, pagination: { total: matches.length } })
