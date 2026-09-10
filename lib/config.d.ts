@@ -13,6 +13,8 @@ export interface Config {
     writablePaths?: string;
     /** 读取缓存有效期（毫秒），默认 60000，范围 1000~300000 */
     cacheTtlMs?: number;
+    /** 本地保存目录：把搜索结果/文档存为 Markdown 文件的位置；留空 = $DSH_HOME/outline-auto-saves */
+    localSaveDir?: string;
 }
 export declare const Config: Schema<Config>;
 export type { Context };

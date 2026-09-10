@@ -38,6 +38,10 @@ window.__ModuleLoader__.load({
 			confirmRemoveUrl: "确定要移除已保存的 Outline 服务地址吗？",
 			confirmRemoveToken: "确定要移除已保存的 API Token 吗？",
 			confirmRemoveWritable: "确定要清空可写目录吗？清空后插件回到只读模式。",
+			localSaveDir: "本地保存目录",
+			localSaveDirHint: "把搜索结果/文档存为 Markdown 的本地目录；留空 = $DSH_HOME/outline-auto-saves。需重启 web profile 后生效。",
+			removeSaveDir: "清空本地保存目录",
+			confirmRemoveSaveDir: "确定要清空本地保存目录吗？清空后回退到默认位置。",
 			keepUrlPlaceholder: "留空将清除当前地址；输入新地址以替换",
 			keepTokenPlaceholder: "留空将清除当前 Token；输入新 API Token 以替换",
 			tokenHintConfigured: "已配置。星号为占位，真实值不会被显示。",
@@ -73,6 +77,10 @@ window.__ModuleLoader__.load({
 			confirmRemoveUrl: "Remove the saved Outline service URL?",
 			confirmRemoveToken: "Remove the saved API Token?",
 			confirmRemoveWritable: "Clear the writable paths? The plugin returns to read-only mode.",
+			localSaveDir: "Local save directory",
+			localSaveDirHint: "Local directory where search results/documents are saved as Markdown; empty = $DSH_HOME/outline-auto-saves. Restart the web profile after changing.",
+			removeSaveDir: "Clear local save directory",
+			confirmRemoveSaveDir: "Clear the local save directory? It falls back to the default location.",
 			keepUrlPlaceholder: "Leave blank to clear the current URL; enter a new URL to replace it",
 			keepTokenPlaceholder: "Leave blank to clear the current token; enter a new API Token to replace it",
 			tokenHintConfigured: "Configured. The stars are a placeholder; the real value is never shown.",
@@ -90,7 +98,7 @@ window.__ModuleLoader__.load({
 			emptyPlaceholder: "Leave empty to use the default",
 		};
 
-		const FIELDS = ["baseUrl", "apiToken", "writablePaths"];
+		const FIELDS = ["baseUrl", "apiToken", "writablePaths", "localSaveDir"];
 
 		// 仅用于视觉提示的占位符，永远不会写入设置（敏感值统一掩码处理）。
 		const MASK = "*".repeat(28);
@@ -440,6 +448,23 @@ window.__ModuleLoader__.load({
 							disabled: !state.writable,
 							onEdit: (text) => { props.edit("writablePaths", text); },
 							onRemove: () => { props.remove("writablePaths", t("confirmRemoveWritable")); },
+						}),
+						React.createElement(ValueField, {
+							id: "outline-auto-localSaveDir",
+							label: t("localSaveDir"),
+							hint: t("localSaveDirHint"),
+							statusOk: state.localSaveDir.configured,
+							okLabel: t("configured"),
+							noLabel: t("notConfigured"),
+							overriddenLabel: t("overridden"),
+							removeLabel: t("removeSaveDir"),
+							display: state.localSaveDir.text,
+							overridden: state.localSaveDir.overridden,
+							configured: state.localSaveDir.configured,
+							placeholder: t("emptyPlaceholder"),
+							disabled: !state.writable,
+							onEdit: (text) => { props.edit("localSaveDir", text); },
+							onRemove: () => { props.remove("localSaveDir", t("confirmRemoveSaveDir")); },
 						}),
 						React.createElement(
 							"div", { className: "dsh-oac-footer" },

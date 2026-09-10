@@ -1,3 +1,5 @@
+import { mkdir, stat, writeFile } from 'node:fs/promises'
+import path from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { OutlineClient, OutlineSearchResult, OutlineDocument, OutlineCollection, OutlineCreateResult } from './client.js'
 
@@ -33,7 +35,132 @@ function renderDocument(doc: OutlineDocument, truncated: boolean): string {
   return `# ${doc.title}\n\n${doc.url}\n\n${doc.text}${note}`
 }
 
-export function outlineSearchTool(makeClient: () => OutlineClient, defaultLimit: number) {
+// ---------------------------------------------------------------------------
+// 本地保存（localSaveDir + outline_save_local）
+// ---------------------------------------------------------------------------
+
+/** 本地保存默认目录名（相对 DSH 主目录；DSH 主目录不可得时回退到用户主目录）。 */
+export const LOCAL_SAVE_DIRNAME = 'outline-auto-saves'
+
+/** 解析本地保存目录：配置优先，其次 $DSH_HOME/outline-auto-saves，最后 $HOME/outline-auto-saves。 */
+export function resolveLocalSaveDir(configured: string | undefined, env: NodeJS.ProcessEnv = process.env): string {
+  const cfg = (configured ?? '').trim()
+  if (cfg !== '') return cfg
+  const dshHome = (env.DSH_HOME ?? '').trim()
+  const base = dshHome !== '' ? dshHome : (env.USERPROFILE ?? env.HOME ?? '.').trim() || '.'
+  return path.join(base, LOCAL_SAVE_DIRNAME)
+}
+
+/**
+ * 把内容渲染为保存提示（追加在 outline_search / outline_get_document 结果末尾）。
+ * dir 为空表示未配置保存目录 → 提示先配置；否则提示可回复"保存"触发 outline_save_local。
+ * 纯函数，可单测。
+ */
+export function renderLocalSaveHint(dir: string, kind: 'search' | 'document'): string {
+  if (dir.trim() === '') {
+    return `\n\n💾 如需把本次结果存为本地 Markdown 文件，请先在 设置 → 插件 → 插件配置 的「Outline 知识库」卡片中填写本地保存目录。`
+  }
+  const what = kind === 'search' ? '本次搜索结果' : '本文档'
+  return `\n\n💾 是否将${what}整理成文档存放在本地？如需保存，回复"保存"并给出标题（可选），将存入 ${dir}。`
+}
+
+/** 文件名合法化：替换文件系统非法字符与首尾空白；空串回退为 untitled。 */
+export function sanitizeFileName(title: string): string {
+  const cleaned = title.replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').trim()
+  return cleaned !== '' ? cleaned : 'untitled'
+}
+
+/** 提取当前日期 YYYY-MM-DD（本地时区），供默认文件名前缀。 */
+function localDateString(now: Date): string {
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+/** 把文档渲染为 Markdown 正文。 */
+export function documentToMarkdown(doc: OutlineDocument): string {
+  return `# ${doc.title}\n\n- 来源：${doc.url}\n- 文档 id：${doc.id}\n\n${doc.text}\n`
+}
+
+/** 组装默认文件名：YYYY-MM-DD-<合法化标题>.md */
+export function buildSaveFileName(title: string, now: Date = new Date()): string {
+  return `${localDateString(now)}-${sanitizeFileName(title)}.md`
+}
+
+/** 冲突时追加序号：name.md → name-2.md → name-3.md …（存在性由传入的 exists 检查，便于测试）。 */
+export async function dedupeFileName(
+  dir: string,
+  fileName: string,
+  exists: (p: string) => Promise<boolean>,
+): Promise<string> {
+  if (!(await exists(path.join(dir, fileName)))) return fileName
+  const ext = path.extname(fileName)
+  const stem = fileName.slice(0, fileName.length - ext.length)
+  for (let i = 2; ; i++) {
+    const candidate = `${stem}-${i}${ext}`
+    if (!(await exists(path.join(dir, candidate)))) return candidate
+  }
+}
+
+export function outlineSaveLocalTool(
+  getSaveDir: () => string,
+  makeClient: () => OutlineClient,
+) {
+  return defineTool({
+    name: 'outline_save_local',
+    description: '把最近一次 Outline 搜索结果或文档内容整理成 Markdown 文件保存到本地目录（配置的 localSaveDir，默认 $DSH_HOME/outline-auto-saves）。用户在对话中同意保存后调用本工具。',
+    parameters: {
+      source: { type: 'string', required: true, description: '保存来源：search（最近一次搜索结果）或 document（指定文档）' },
+      id: { type: 'string', description: 'source=document 时必填：文档 id（来自 outline_search / outline_get_document）' },
+      title: { type: 'string', description: '可选，文件标题（默认取文档标题或搜索关键词 + 日期）' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          path: { type: 'string', required: true, description: '写入的本地文件绝对路径' },
+          bytes: { type: 'integer', required: true, description: '写入字节数' },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `💾 已保存到本地：${value.path}（${value.bytes} 字节）`,
+      }],
+    },
+    async execute(args) {
+      const dir = (getSaveDir() ?? '').trim()
+      if (dir === '') {
+        throw new Error('本地保存目录未配置。请在 设置 → 插件 → 插件配置 的「Outline 知识库」卡片中填写本地保存目录。')
+      }
+      if (args.source !== 'document') {
+        throw new Error('当前版本 outline_save_local 仅支持 source=document（把指定 Outline 文档存为本地 Markdown）。搜索结果保存功能尚未开放。')
+      }
+      if (args.id === undefined || args.id.trim() === '') {
+        throw new Error('source=document 时必须提供文档 id（参数 id）。')
+      }
+      const client = makeClient()
+      const doc = await client.getDocument(args.id.trim())
+      const title = (args.title ?? '').trim() !== '' ? (args.title ?? '').trim() : doc.title
+      const markdown = documentToMarkdown(doc)
+      const fileName = await dedupeFileName(dir, buildSaveFileName(title), async (p) => {
+        try {
+          await stat(p)
+          return true
+        } catch {
+          return false
+        }
+      })
+      const filePath = path.join(dir, fileName)
+      await mkdir(dir, { recursive: true })
+      await writeFile(filePath, markdown, 'utf8')
+      return { path: filePath, bytes: Buffer.byteLength(markdown, 'utf8') }
+    },
+  })
+}
+
+export function outlineSearchTool(makeClient: () => OutlineClient, defaultLimit: number, getSaveDir?: () => string) {
   return defineTool({
     name: 'outline_search',
     description: '在 Outline 知识库中按关键词搜索文档，返回该关键词的匹配总数、标题、命中片段、文档 id 与链接。可选按集合/作者/更新时间过滤。配置好 token 后即可检索全部文档。',
@@ -70,7 +197,10 @@ export function outlineSearchTool(makeClient: () => OutlineClient, defaultLimit:
           },
         },
       },
-      render: (_args, value) => [{ type: 'text', text: renderSearchResults(value) }],
+      render: (_args, value) => [{
+        type: 'text',
+        text: renderSearchResults(value) + (getSaveDir !== undefined ? renderLocalSaveHint(getSaveDir(), 'search') : ''),
+      }],
     },
     async execute(args) {
       const limit = Math.min(SEARCH_MAX_LIMIT, Math.max(1, args.limit ?? defaultLimit))
@@ -105,7 +235,7 @@ export function outlineCountTool(makeClient: () => OutlineClient) {
   })
 }
 
-export function outlineGetDocumentTool(makeClient: () => OutlineClient) {
+export function outlineGetDocumentTool(makeClient: () => OutlineClient, getSaveDir?: () => string) {
   return defineTool({
     name: 'outline_get_document',
     description: '按文档 id（来自 outline_search 的结果或 Outline 的 urlId）获取文档完整内容（Markdown 格式）。',
@@ -128,7 +258,10 @@ export function outlineGetDocumentTool(makeClient: () => OutlineClient) {
           parentDocumentId: { type: 'string', description: '父文档 id（顶层文档为空）' },
         },
       },
-      render: (_args, value) => [{ type: 'text', text: renderDocument(value, value.truncated) }],
+      render: (_args, value) => [{
+        type: 'text',
+        text: renderDocument(value, value.truncated) + (getSaveDir !== undefined ? renderLocalSaveHint(getSaveDir(), 'document') : ''),
+      }],
     },
     async execute(args) {
       const maxLength = Math.min(DOCUMENT_MAX_LENGTH_CAP, Math.max(1000, args.maxLength ?? DOCUMENT_DEFAULT_MAX_LENGTH))

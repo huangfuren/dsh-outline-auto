@@ -4,7 +4,7 @@
 
 A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getoutline.com/) knowledge base from your conversation. Give it a keyword — it returns matching documents with **titles, snippets, and links**; ask for one of them and it returns the **full content in Markdown**. Approved write tools can create, update, and delete documents, with an approval prompt before every write.
 
-> Project status: 0.4.1. The current feature set is covered by unit tests, a Mock-server smoke, and a settings-chain integration check. The supported DSH baseline is `0.1.1-rc.2`; older Harness builds are not certified.
+> Project status: 0.5.0. The current feature set is covered by unit tests, a Mock-server smoke, and a settings-chain integration check. The supported DSH baseline is `0.1.1-rc.2`; older Harness builds are not certified.
 
 
 ## The core idea
@@ -16,7 +16,7 @@ A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getou
 
 ## Features
 
-- **Ten tools** — search, read, count, list collections, resolve paths, list children, return a document template, create, update, and delete.
+- **Eleven tools** — search, read, count, list collections, resolve paths, list children, return a document template, save to a local Markdown file, create, update, and delete.
 - **Clickable results** — document links are resolved to absolute URLs against your `baseUrl` (Outline returns relative paths); snippets and titles are cleaned of HTML tags so results render cleanly in chat.
 - **Configurable read cache (default 60s TTL, capped entries)** — re-reading the same document within a session does not hit the API again; write tools invalidate the cache so edits are visible immediately; the TTL is configurable via `cacheTtlMs` and the cache has an entry cap to bound memory.
 - **429 retry with backoff** — rate-limited requests automatically retry up to 3 times (respecting `Retry-After`, otherwise exponential backoff capped at 5s).
@@ -44,10 +44,10 @@ A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getou
 Install from the public GitHub repository, pinned to the latest release tag:
 
 ```bash
-dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.git#v0.4.0
+dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.git#v0.5.0
 ```
 
-The `#v0.4.0` suffix pins the exact release; omit it to track the latest commit on `main`.
+The `#v0.5.0` suffix pins the exact release; omit it to track the latest commit on `main`.
 
 Restart `dsh web` after installation. The published package contains the built `lib/` directory, so a normal Git install does not depend on a local build step. Its install hook only removes stale references to this plugin's old package name (`dsh-outline-ai`) from the selected DSH profile; it does not remove or rewrite unrelated plugins.
 
@@ -94,6 +94,7 @@ The recommended way is the **GUI card** (Settings → Plugins → plugin configu
 | Service URL (baseUrl) | Outline instance root, e.g. `https://outline.example.com` |
 | API Token | create one at Outline → Settings → API keys |
 | Writable paths (empty = read-only) | comma-separated directory paths, e.g. `Collection A,Knowledge Base/Dir 1`; only these directories and their children are writable |
+| Local save directory | local directory where `outline_save_local` writes Markdown files; empty = `$DSH_HOME/outline-auto-saves` (fallback `$HOME/outline-auto-saves`). Restart the web profile after changing |
 
 Click **Save** — applies immediately. Alternatively, configure via environment variables (`OUTLINE_BASE_URL` / `OUTLINE_API_TOKEN`) or the plugin config row in `cordis.patch.yml`. Advanced options in the plugin config row: `timeoutMs` (request timeout, default 15000) and `cacheTtlMs` (read-cache lifetime in ms, default 60000, range 1000–300000).
 
@@ -116,6 +117,7 @@ The public package must not contain organization-specific collection names, URLs
 | `outline_resolve_path(path)` | Resolve a human path like `Knowledge Base/Directory A/Subdirectory` into `collectionId` + `parentDocumentId`; returns the resolved full path. |
 | `outline_list_children(parentId)` | List direct child documents of a directory (parent document). |
 | `outline_doc_template()` | Return the standard requirement-document template (Markdown) + required section list — call it before writing a requirement doc. |
+| `outline_save_local(source, id?, title?)` | **Local save** — write a fetched Outline document to a local Markdown file (`YYYY-MM-DD-title.md`, auto-increment on name clash, never overwrites). Only writes to local disk; does not touch the knowledge base. Results of search/get_document show a prompt offering this. |
 | `outline_create(collectionId, title, text, publish?, parentDocumentId?)` | **Write** — create a document (default published; nest under a directory via `parentDocumentId`). **Requires approval** showing the resolved full path. |
 | `outline_update_document(id, title?, text?)` | **Write** — update a document's title/body. **Requires approval** showing the document path. |
 | `outline_delete(id)` | **Write, irreversible** — delete a document. **Double approval**: a first prompt, then a second confirmation before deletion. |

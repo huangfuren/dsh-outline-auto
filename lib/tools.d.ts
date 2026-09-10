@@ -1,10 +1,29 @@
-import type { OutlineClient, OutlineCollection } from './client.js';
+import type { OutlineClient, OutlineDocument, OutlineCollection } from './client.js';
 export declare const SEARCH_MAX_LIMIT = 25;
 export declare const DOCUMENT_DEFAULT_MAX_LENGTH = 20000;
 export declare const DOCUMENT_MAX_LENGTH_CAP = 200000;
-export declare function outlineSearchTool(makeClient: () => OutlineClient, defaultLimit: number): import("@deepseek-ai/dsh-tools").ToolDefinition;
+/** 本地保存默认目录名（相对 DSH 主目录；DSH 主目录不可得时回退到用户主目录）。 */
+export declare const LOCAL_SAVE_DIRNAME = "outline-auto-saves";
+/** 解析本地保存目录：配置优先，其次 $DSH_HOME/outline-auto-saves，最后 $HOME/outline-auto-saves。 */
+export declare function resolveLocalSaveDir(configured: string | undefined, env?: NodeJS.ProcessEnv): string;
+/**
+ * 把内容渲染为保存提示（追加在 outline_search / outline_get_document 结果末尾）。
+ * dir 为空表示未配置保存目录 → 提示先配置；否则提示可回复"保存"触发 outline_save_local。
+ * 纯函数，可单测。
+ */
+export declare function renderLocalSaveHint(dir: string, kind: 'search' | 'document'): string;
+/** 文件名合法化：替换文件系统非法字符与首尾空白；空串回退为 untitled。 */
+export declare function sanitizeFileName(title: string): string;
+/** 把文档渲染为 Markdown 正文。 */
+export declare function documentToMarkdown(doc: OutlineDocument): string;
+/** 组装默认文件名：YYYY-MM-DD-<合法化标题>.md */
+export declare function buildSaveFileName(title: string, now?: Date): string;
+/** 冲突时追加序号：name.md → name-2.md → name-3.md …（存在性由传入的 exists 检查，便于测试）。 */
+export declare function dedupeFileName(dir: string, fileName: string, exists: (p: string) => Promise<boolean>): Promise<string>;
+export declare function outlineSaveLocalTool(getSaveDir: () => string, makeClient: () => OutlineClient): import("@deepseek-ai/dsh-tools").ToolDefinition;
+export declare function outlineSearchTool(makeClient: () => OutlineClient, defaultLimit: number, getSaveDir?: () => string): import("@deepseek-ai/dsh-tools").ToolDefinition;
 export declare function outlineCountTool(makeClient: () => OutlineClient): import("@deepseek-ai/dsh-tools").ToolDefinition;
-export declare function outlineGetDocumentTool(makeClient: () => OutlineClient): import("@deepseek-ai/dsh-tools").ToolDefinition;
+export declare function outlineGetDocumentTool(makeClient: () => OutlineClient, getSaveDir?: () => string): import("@deepseek-ai/dsh-tools").ToolDefinition;
 /** 审批提示文案：完整路径 + 标题 + 内容预览（前 100 字，纯函数可单测）。 */
 export declare function buildCreateApprovalReason(args: {
     collectionId?: string;

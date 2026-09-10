@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool, outlineResolvePathTool,
   outlineCreateTool, outlineUpdateDocumentTool, outlineDeleteTool, outlineListChildrenTool, outlineDocTemplateTool,
-  buildCreateApprovalReason, resolveWriteGuard, resolvePathGuard, parseWritablePaths,
+  outlineSaveLocalTool, buildCreateApprovalReason, resolveWriteGuard, resolvePathGuard, parseWritablePaths,
+  renderLocalSaveHint, resolveLocalSaveDir, sanitizeFileName, buildSaveFileName, dedupeFileName, documentToMarkdown,
 } from '../src/tools.js'
 import { OutlineApiError } from '../src/errors.js'
 import type { OutlineClient } from '../src/client.js'
@@ -364,5 +368,114 @@ describe('outline_get_document', () => {
   it('文档缺失透传 not-found 错误', async () => {
     const tool = outlineGetDocumentTool(() => fakeClient({ getDocument: async () => { throw new OutlineApiError('not-found', 'Outline 文档不存在或无权访问（HTTP 404）：请确认文档 id 是否正确。', 404) } }))
     await expect(tool.execute({ id: 'nope' }, exec)).rejects.toMatchObject({ kind: 'not-found' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 本地保存：提示语、文件名、去重、outline_save_local
+// ---------------------------------------------------------------------------
+
+describe('resolveLocalSaveDir', () => {
+  it('配置优先', () => {
+    expect(resolveLocalSaveDir('D:\\somewhere', {})).toBe('D:\\somewhere')
+  })
+  it('留空回退 DSH_HOME/outline-auto-saves', () => {
+    const r = resolveLocalSaveDir('', { DSH_HOME: '/dsh' })
+    expect(r).toContain('outline-auto-saves')
+    expect(r).toContain('dsh')
+  })
+  it('无 DSH_HOME 时回退 HOME', () => {
+    const r = resolveLocalSaveDir(undefined, { HOME: '/home/u' })
+    expect(r).toContain('outline-auto-saves')
+    expect(r).toContain('home')
+    expect(r).toContain('u')
+  })
+})
+
+describe('renderLocalSaveHint', () => {
+  it('已配置目录：提示回复"保存"并给出存放位置', () => {
+    const hint = renderLocalSaveHint('D:\\notes', 'search')
+    expect(hint).toContain('是否将本次搜索结果整理成文档存放在本地')
+    expect(hint).toContain('D:\\notes')
+  })
+  it('文档形态提示语用"本文档"', () => {
+    expect(renderLocalSaveHint('/tmp/x', 'document')).toContain('本文档')
+  })
+  it('未配置目录：提示先配置，不出现路径', () => {
+    const hint = renderLocalSaveHint('', 'search')
+    expect(hint).toContain('设置 → 插件 → 插件配置')
+    expect(hint).not.toMatch(/存入 \S/)
+  })
+})
+
+describe('sanitizeFileName', () => {
+  it('替换文件系统非法字符', () => {
+    expect(sanitizeFileName('a/b\\c:d*e?f"g<h>i|j')).toBe('a_b_c_d_e_f_g_h_i_j')
+  })
+  it('空标题回退 untitled', () => {
+    expect(sanitizeFileName('   ')).toBe('untitled')
+  })
+})
+
+describe('buildSaveFileName', () => {
+  it('日期前缀 + 合法化标题 + .md', () => {
+    expect(buildSaveFileName('部署规范', new Date(2026, 8, 4))).toBe('2026-09-04-部署规范.md')
+  })
+})
+
+describe('dedupeFileName', () => {
+  it('无冲突返回原名', async () => {
+    expect(await dedupeFileName('/d', 'a.md', async () => false)).toBe('a.md')
+  })
+  it('冲突时追加序号', async () => {
+    const exists = async (p: string) => p === 'a.md' || p === 'a-2.md'
+    expect(await dedupeFileName('.', 'a.md', exists)).toBe('a-3.md')
+  })
+})
+
+describe('documentToMarkdown', () => {
+  it('包含标题、来源链接与正文', () => {
+    const md = documentToMarkdown({ id: 'd1', title: 'T', url: 'https://x/doc/d1', text: '正文', updatedAt: '' })
+    expect(md).toContain('# T')
+    expect(md).toContain('https://x/doc/d1')
+    expect(md).toContain('正文')
+  })
+})
+
+describe('outline_save_local', () => {
+  it('未配置保存目录时拒绝', async () => {
+    const tool = outlineSaveLocalTool(() => '', () => fakeClient())
+    await expect(tool.execute({ source: 'document', id: 'd1' }, exec)).rejects.toThrow('未配置')
+  })
+  it('document 源写盘并返回绝对路径', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'oa-save-'))
+    try {
+      const tool = outlineSaveLocalTool(() => dir, () => fakeClient({
+        getDocument: async () => ({ id: 'd1', title: '部署规范', url: 'https://x/doc/d1', text: '步骤一', updatedAt: '' }),
+      }))
+      const r = await tool.execute({ source: 'document', id: 'd1' }, exec) as any
+      expect(r.path).toContain('部署规范.md')
+      expect(r.bytes).toBeGreaterThan(0)
+      const content = readFileSync(r.path, 'utf8')
+      expect(content).toContain('# 部署规范')
+      expect(content).toContain('步骤一')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+  it('同名文件冲突自动加序号，不覆盖', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'oa-save-'))
+    try {
+      const tool = outlineSaveLocalTool(() => dir, () => fakeClient({
+        getDocument: async () => ({ id: 'd1', title: 'T', url: '/d', text: '内容', updatedAt: '' }),
+      }))
+      const first = await tool.execute({ source: 'document', id: 'd1' }, exec) as any
+      const second = await tool.execute({ source: 'document', id: 'd1' }, exec) as any
+      expect(second.path).not.toBe(first.path)
+      expect(second.path).toMatch(/-2\.md$/)
+      expect(readFileSync(first.path, 'utf8')).toContain('内容')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

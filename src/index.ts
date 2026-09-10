@@ -7,8 +7,9 @@ import { OutlineClient } from './client.js'
 import {
   outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool,
   outlineResolvePathTool, outlineCreateTool, outlineUpdateDocumentTool, outlineDeleteTool,
-  outlineListChildrenTool, outlineDocTemplateTool, buildCreateApprovalReason, resolveWriteGuard,
-  parseWritablePaths, resolvePathGuard,
+  outlineListChildrenTool, outlineDocTemplateTool, outlineSaveLocalTool,
+  buildCreateApprovalReason, resolveWriteGuard,
+  parseWritablePaths, resolvePathGuard, resolveLocalSaveDir,
 } from './tools.js'
 import type { OutlineCollection } from './client.js'
 
@@ -54,6 +55,12 @@ export function apply(ctx: Context, config: Config = {} as Config) {
     return (s.writablePaths ?? config.writablePaths ?? '').trim()
   }
 
+  // 本地保存目录：settings 用户层 → 插件配置 → 默认 DSH_HOME/outline-auto-saves → 回退 HOME。
+  const getLocalSaveDir = (): string => {
+    const s = settingsSource()
+    return resolveLocalSaveDir(s.localSaveDir ?? config.localSaveDir)
+  }
+
   // settings 的 base 层 = 插件配置行 + 环境变量（env 优先于配置行）。
   // 这样用户层未覆盖时解析值仍含部署连接信息，客户端卡片据此显示“已配置”，
   // 且卡片字段能回显部署默认值（apiToken 由客户端掩码，不回显明文）。
@@ -73,13 +80,14 @@ export function apply(ctx: Context, config: Config = {} as Config) {
     onChange: () => {},
   })
 
-  ctx.tools.register(outlineSearchTool(makeClient, config.searchLimit ?? 10))
-  ctx.tools.register(outlineGetDocumentTool(makeClient))
+  ctx.tools.register(outlineSearchTool(makeClient, config.searchLimit ?? 10, getLocalSaveDir))
+  ctx.tools.register(outlineGetDocumentTool(makeClient, getLocalSaveDir))
   ctx.tools.register(outlineCountTool(makeClient))
   ctx.tools.register(outlineListCollectionsTool(makeClient))
   ctx.tools.register(outlineResolvePathTool(makeClient))
   ctx.tools.register(outlineListChildrenTool(makeClient))
   ctx.tools.register(outlineDocTemplateTool())
+  ctx.tools.register(outlineSaveLocalTool(getLocalSaveDir, makeClient))
   ctx.tools.register(outlineCreateTool(makeClient, getWritablePaths))
   ctx.tools.register(outlineUpdateDocumentTool(makeClient, getWritablePaths))
   ctx.tools.register(outlineDeleteTool(makeClient, getWritablePaths, async (reason, exec) => {

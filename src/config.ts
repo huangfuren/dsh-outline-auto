@@ -14,6 +14,8 @@ export interface Config {
   writablePaths?: string
   /** 读取缓存有效期（毫秒），默认 60000，范围 1000~300000 */
   cacheTtlMs?: number
+  /** 本地保存目录：把搜索结果/文档存为 Markdown 文件的位置；留空 = $DSH_HOME/outline-auto-saves */
+  localSaveDir?: string
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -23,6 +25,7 @@ export const Config: Schema<Config> = Schema.object({
   searchLimit: Schema.number().min(1).max(25).default(10).description('outline_search 默认返回条数'),
   writablePaths: Schema.string().default('').description('可写目录路径（逗号分隔），如 集合A,集合B/目录1；留空 = 全库只读（默认）'),
   cacheTtlMs: Schema.number().min(1000).max(300000).default(60000).description('读取缓存有效期（毫秒），默认 60000'),
+  localSaveDir: Schema.string().default('').description('本地保存目录：搜索结果/文档可存为 Markdown 文件的位置；留空 = $DSH_HOME/outline-auto-saves'),
 })
 
 export type { Context }

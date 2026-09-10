@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here. Release-specific notes are also published on GitHub Releases.
 
+## [Unreleased]
+
+## [v0.5.0] - 2026-09-08
+
+### Added
+
+- **本地保存（`outline_save_local`）**：`outline_search` 与 `outline_get_document` 的结果末尾追加「是否整理成文档存到本地」提示并给出实际存放目录；用户确认后由 `outline_save_local` 把指定 Outline 文档写成本地 Markdown（`YYYY-MM-DD-标题.md`，同名自动 `-2` 序号，不覆盖）。只写本地磁盘，不向知识库写入。
+- **配置项 `localSaveDir`**（GUI 卡片「本地保存目录」+ 插件配置行 + 环境变量）：留空默认 `$DSH_HOME/outline-auto-saves`（无 `DSH_HOME` 回退 `$HOME/outline-auto-saves`）。
+
 ## [v0.4.2] - 2026-09-08
 
 ### Fixed
