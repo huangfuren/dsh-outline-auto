@@ -5,8 +5,8 @@ import { join } from 'node:path'
 import {
   outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool, outlineResolvePathTool,
   outlineCreateTool, outlineUpdateDocumentTool, outlineDeleteTool, outlineListChildrenTool, outlineDocTemplateTool,
-  outlineSaveLocalTool, buildCreateApprovalReason, resolveWriteGuard, resolvePathGuard, parseWritablePaths,
-  renderLocalSaveHint, resolveLocalSaveDir, sanitizeFileName, buildSaveFileName, dedupeFileName, documentToMarkdown,
+  outlineSaveLocalTool, outlineListUsersTool, buildCreateApprovalReason, resolveWriteGuard, resolvePathGuard, parseWritablePaths,
+  renderLocalSaveHint, resolveLocalSaveDir, sanitizeFileName, buildSaveFileName, dedupeFileName, documentToMarkdown, mergeDocumentsToMarkdown,
 } from '../src/tools.js'
 import { OutlineApiError } from '../src/errors.js'
 import type { OutlineClient } from '../src/client.js'
@@ -408,6 +408,69 @@ describe('renderLocalSaveHint', () => {
   })
 })
 
+describe('outline_list_users', () => {
+  it('execute 返回用户列表', async () => {
+    const tool = outlineListUsersTool(() => fakeClient({
+      listUsers: async () => [{ id: 'u1', name: '张三', email: 'z@x.com' }, { id: 'u2', name: '李四' }],
+    }))
+    const r = await tool.execute({} as never, exec) as any
+    expect(r).toHaveLength(2)
+    expect(r[0]).toMatchObject({ id: 'u1', name: '张三', email: 'z@x.com' })
+  })
+})
+
+describe('outline_search author 解析', () => {
+  function searchWithUsers(users: any[], hits: any[]) {
+    return outlineSearchTool(() => fakeClient({
+      findUsers: async (q: string) => users.filter((u) => u.name.includes(q) || (u.email ?? '').includes(q)),
+      searchDocuments: async () => ({ total: hits.length, hits }),
+    }), 10)
+  }
+  it('author 精确匹配单人 → 服务端 userId 过滤', async () => {
+    let seenUserId = ''
+    const tool = outlineSearchTool(() => fakeClient({
+      findUsers: async () => [{ id: 'u9', name: '张三' }],
+      searchDocuments: async (_q, _l, _c, filters) => { seenUserId = filters?.userId ?? ''; return { total: 0, hits: [] } },
+    }), 10)
+    await tool.execute({ query: 'x', author: '张三' }, exec)
+    expect(seenUserId).toBe('u9')
+  })
+  it('author 匹配多人 → 抛候选列表', async () => {
+    const tool = outlineSearchTool(() => fakeClient({
+      findUsers: async () => [{ id: 'u1', name: '张伟' }, { id: 'u2', name: '张强' }],
+      searchDocuments: async () => ({ total: 0, hits: [] }),
+    }), 10)
+    await expect(tool.execute({ query: 'x', author: '张' }, exec)).rejects.toThrow(/匹配到多位作者/)
+  })
+  it('author 匹配 0 人 → 抛未找到', async () => {
+    const tool = outlineSearchTool(() => fakeClient({
+      findUsers: async () => [],
+      searchDocuments: async () => ({ total: 0, hits: [] }),
+    }), 10)
+    await expect(tool.execute({ query: 'x', author: '王五' }, exec)).rejects.toThrow(/未找到名为/)
+  })
+  it('userId 直接传 → 不参与姓名解析', async () => {
+    let seen = ''
+    const tool = outlineSearchTool(() => fakeClient({
+      searchDocuments: async (_q, _l, _c, filters) => { seen = filters?.userId ?? ''; return { total: 0, hits: [] } },
+    }), 10)
+    await tool.execute({ query: 'x', userId: 'direct-1' }, exec)
+    expect(seen).toBe('direct-1')
+  })
+})
+
+describe('search result 渲染作者名', () => {
+  it('命中行附带（作者：xxx）', async () => {
+    const tool = outlineSearchTool(() => fakeClient(), 10)
+    const value = {
+      total: 1,
+      hits: [{ id: 'd1', title: 'T', url: 'https://x/d', snippet: '', collectionId: '', updatedAt: '', authorName: '张三' }],
+    }
+    const text = (tool as any).output.render({}, value)[0].text
+    expect(text).toContain('（作者：张三）')
+  })
+})
+
 describe('sanitizeFileName', () => {
   it('替换文件系统非法字符', () => {
     expect(sanitizeFileName('a/b\\c:d*e?f"g<h>i|j')).toBe('a_b_c_d_e_f_g_h_i_j')
@@ -442,23 +505,62 @@ describe('documentToMarkdown', () => {
   })
 })
 
-describe('outline_save_local', () => {
+describe('mergeDocumentsToMarkdown', () => {
+  it('生成目录 + 各篇全文', () => {
+    const md = mergeDocumentsToMarkdown(
+      [
+        { id: 'd1', title: 'A', url: 'https://x/a', text: '正文A', updatedAt: '' },
+        { id: 'd2', title: 'B', url: 'https://x/b', text: '正文B', updatedAt: '' },
+      ],
+      '合并导出',
+    )
+    expect(md).toContain('# 合并导出')
+    expect(md).toContain('1. [A](https://x/a)')
+    expect(md).toContain('# A')
+    expect(md).toContain('正文A')
+    expect(md).toContain('# B')
+    expect(md).toContain('正文B')
+  })
+})
+
+describe('outline_save_local（批量 ids）', () => {
   it('未配置保存目录时拒绝', async () => {
     const tool = outlineSaveLocalTool(() => '', () => fakeClient())
-    await expect(tool.execute({ source: 'document', id: 'd1' }, exec)).rejects.toThrow('未配置')
+    await expect(tool.execute({ ids: 'd1' }, exec)).rejects.toThrow('未配置')
   })
-  it('document 源写盘并返回绝对路径', async () => {
+  it('ids 为空或全空白时拒绝', async () => {
+    const tool = outlineSaveLocalTool(() => 'D:\\x', () => fakeClient())
+    await expect(tool.execute({ ids: ' , , ' }, exec)).rejects.toThrow('至少一个文档 id')
+  })
+  it('单篇：写盘并返回绝对路径', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'oa-save-'))
     try {
       const tool = outlineSaveLocalTool(() => dir, () => fakeClient({
         getDocument: async () => ({ id: 'd1', title: '部署规范', url: 'https://x/doc/d1', text: '步骤一', updatedAt: '' }),
       }))
-      const r = await tool.execute({ source: 'document', id: 'd1' }, exec) as any
+      const r = await tool.execute({ ids: 'd1' }, exec) as any
+      expect(r.documents).toBe(1)
       expect(r.path).toContain('部署规范.md')
       expect(r.bytes).toBeGreaterThan(0)
       const content = readFileSync(r.path, 'utf8')
       expect(content).toContain('# 部署规范')
       expect(content).toContain('步骤一')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+  it('多篇：合并为带目录的一个 md', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'oa-save-'))
+    try {
+      const tool = outlineSaveLocalTool(() => dir, () => fakeClient({
+        getDocument: async (id: string) => ({ id, title: `D-${id}`, url: `https://x/${id}`, text: `内容-${id}`, updatedAt: '' }),
+      }))
+      const r = await tool.execute({ ids: 'd1, d2 , d1' }, exec) as any // 去重：d1 两次
+      expect(r.documents).toBe(2)
+      const content = readFileSync(r.path, 'utf8')
+      expect(content).toContain('D-d1等2篇')
+      expect(content).toContain('内容-d1')
+      expect(content).toContain('内容-d2')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -469,13 +571,18 @@ describe('outline_save_local', () => {
       const tool = outlineSaveLocalTool(() => dir, () => fakeClient({
         getDocument: async () => ({ id: 'd1', title: 'T', url: '/d', text: '内容', updatedAt: '' }),
       }))
-      const first = await tool.execute({ source: 'document', id: 'd1' }, exec) as any
-      const second = await tool.execute({ source: 'document', id: 'd1' }, exec) as any
+      const first = await tool.execute({ ids: 'd1' }, exec) as any
+      const second = await tool.execute({ ids: 'd1' }, exec) as any
       expect(second.path).not.toBe(first.path)
       expect(second.path).toMatch(/-2\.md$/)
       expect(readFileSync(first.path, 'utf8')).toContain('内容')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+  it('超过 SAVE_MAX_DOCS 上限拒绝', async () => {
+    const tool = outlineSaveLocalTool(() => 'D:\\x', () => fakeClient())
+    const many = Array.from({ length: 51 }, (_, i) => `d${i}`).join(',')
+    await expect(tool.execute({ ids: many }, exec)).rejects.toThrow('一次最多保存')
   })
 })

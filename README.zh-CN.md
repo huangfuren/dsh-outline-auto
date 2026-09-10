@@ -4,11 +4,11 @@
 
 DeepSeek Harness 的 Outline 插件：在对话中搜索、读取并在用户审批后创建、更新或删除文档。插件只连接用户配置的 Outline 实例，不携带任何组织内部地址、token、集合名或文档内容。
 
-> 当前版本：0.5.0。支持的 DeepSeek Harness 基线为 `0.1.1-rc.2`，Node.js 需要 22.19 或更高版本；支持 Windows / macOS / Linux 三种平台。
+> 当前版本：0.6.0。支持的 DeepSeek Harness 基线为 `0.1.1-rc.2`，Node.js 需要 22.19 或更高版本；支持 Windows / macOS / Linux 三种平台。
 
 ## 功能
 
-- 搜索、读取、统计文档，并返回可点击的 Outline 链接。
+- 搜索、读取、统计文档，并返回可点击的 Outline 链接；支持按作者姓名/邮箱过滤（服务端下推），命中附带作者名。
 - 健壮性：429 限流自动重试（指数退避，最多 3 次）；公网地址强制 HTTPS（localhost 与内网私有地址除外）；读取缓存 TTL 可配置（`cacheTtlMs`，默认 60s）且带条目上限。
 - 列出集合、解析“集合/目录/子目录”路径、列出直接子文档。
 - 提供通用需求文档模板。
@@ -23,10 +23,10 @@ DeepSeek Harness 的 Outline 插件：在对话中搜索、读取并在用户审
 从公开 GitHub 仓库安装，并固定到最新发布 tag：
 
 ```bash
-dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.git#v0.5.0
+dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.git#v0.6.0
 ```
 
-`#v0.5.0` 后缀固定到该发布版本；去掉后缀则跟随 `main` 分支最新提交。
+`#v0.6.0` 后缀固定到该发布版本；去掉后缀则跟随 `main` 分支最新提交。
 
 安装后重启 `dsh web`。发布包已经包含编译后的 `lib/`，正常从 Git 安装时不依赖用户本地构建。安装钩子只会清理当前 DSH profile 中本插件旧名称 `dsh-outline-ai` 的残留引用，不会删除或改写其他插件。
 
@@ -90,7 +90,13 @@ node node_modules/dsh-outline-auto/scripts/repair-profile.mjs --profile-dir "$en
 
 ## 工具
 
-`outline_search`、`outline_get_document`、`outline_count`、`outline_list_collections`、`outline_resolve_path`、`outline_list_children`、`outline_doc_template`、`outline_save_local`、`outline_create`、`outline_update_document` 和 `outline_delete`。
+`outline_search`、`outline_get_document`、`outline_count`、`outline_list_collections`、`outline_list_users`、`outline_resolve_path`、`outline_list_children`、`outline_doc_template`、`outline_save_local`、`outline_create`、`outline_update_document` 和 `outline_delete`。
+
+### 作者过滤（outline_list_users + outline_search 的 author）
+
+- 想找"某人写的文档"时，先调 `outline_list_users` 拿到成员 id/姓名/邮箱。
+- 或直接给 `outline_search` 传 `author=姓名/邮箱`：插件会先 `outline_list_users` 解析（精确唯一→直接用、多匹配→返回候选列表让你确认、无匹配→提示"未找到"），再把 `userId` **下推到 Outline 服务端过滤**——比盲搜后人工挑更高效、更省 token。
+- 搜索命中会附带作者名（如 `（作者：张三）`，实例未返回或 users.list 不可用时缺省）。
 
 ### 本地保存（outline_save_local）
 
@@ -98,7 +104,10 @@ node node_modules/dsh-outline-auto/scripts/repair-profile.mjs --profile-dir "$en
 
 - 默认目录：`$DSH_HOME/outline-auto-saves`（无 `DSH_HOME` 时回退 `$HOME/outline-auto-saves`）。
 - 可在 **设置 → 插件 → 插件配置 → Outline 知识库** 卡片的「本地保存目录」中改成任意绝对路径（修改后需重启 web profile）。
-- 用户在对话里回复"保存"后，AI 调用 `outline_save_local`（参数 `source=document`、`id=文档id`），把该文档存为 `YYYY-MM-DD-标题.md`；同名文件自动追加序号 `-2`、`-3` … 不覆盖。
+- 用户在对话里回复"保存"后，AI 收集相关文档的 `id` 调用 `outline_save_local`（参数 `ids=文档id列表，逗号分隔`，最多 50 篇）：
+  - 单篇 → 存为 `YYYY-MM-DD-标题.md`；
+  - 多篇 → 合并为一个带目录的 Markdown（`首篇标题等N篇.md`）。
+  - 同名文件自动追加序号 `-2`、`-3` … 不覆盖。
 - 该能力只写本地磁盘，**不会**向 Outline 知识库写入任何内容。
 
 ## 开发

@@ -4,7 +4,7 @@
 
 A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getoutline.com/) knowledge base from your conversation. Give it a keyword — it returns matching documents with **titles, snippets, and links**; ask for one of them and it returns the **full content in Markdown**. Approved write tools can create, update, and delete documents, with an approval prompt before every write.
 
-> Project status: 0.5.0. The current feature set is covered by unit tests, a Mock-server smoke, and a settings-chain integration check. The supported DSH baseline is `0.1.1-rc.2`; older Harness builds are not certified.
+> Project status: 0.6.0. The current feature set is covered by unit tests, a Mock-server smoke, and a settings-chain integration check. The supported DSH baseline is `0.1.1-rc.2`; older Harness builds are not certified.
 
 
 ## The core idea
@@ -16,7 +16,8 @@ A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getou
 
 ## Features
 
-- **Eleven tools** — search, read, count, list collections, resolve paths, list children, return a document template, save to a local Markdown file, create, update, and delete.
+- **Twelve tools** — search (filter by author name, server-side), read, count, list collections, list users, resolve paths, list children, return a document template, save documents to a local Markdown file (one or many, merged with a table of contents), create, update, and delete.
+- **Author-aware search** — `outline_search` accepts an `author` name/email that resolves against `outline_list_users` and is pushed down to Outline as a server-side `userId` filter; hits carry the author's display name when available.
 - **Clickable results** — document links are resolved to absolute URLs against your `baseUrl` (Outline returns relative paths); snippets and titles are cleaned of HTML tags so results render cleanly in chat.
 - **Configurable read cache (default 60s TTL, capped entries)** — re-reading the same document within a session does not hit the API again; write tools invalidate the cache so edits are visible immediately; the TTL is configurable via `cacheTtlMs` and the cache has an entry cap to bound memory.
 - **429 retry with backoff** — rate-limited requests automatically retry up to 3 times (respecting `Retry-After`, otherwise exponential backoff capped at 5s).
@@ -44,10 +45,10 @@ A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getou
 Install from the public GitHub repository, pinned to the latest release tag:
 
 ```bash
-dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.git#v0.5.0
+dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.git#v0.6.0
 ```
 
-The `#v0.5.0` suffix pins the exact release; omit it to track the latest commit on `main`.
+The `#v0.6.0` suffix pins the exact release; omit it to track the latest commit on `main`.
 
 Restart `dsh web` after installation. The published package contains the built `lib/` directory, so a normal Git install does not depend on a local build step. Its install hook only removes stale references to this plugin's old package name (`dsh-outline-ai`) from the selected DSH profile; it does not remove or rewrite unrelated plugins.
 
@@ -110,14 +111,15 @@ The public package must not contain organization-specific collection names, URLs
 
 | Tool | Description |
 | --- | --- |
-| `outline_search(query, limit?, offset?, collectionId?, userId?, updatedAfter?)` | Keyword search; returns the match **total**, plus title, snippet, document id and link per hit. Optional filters: collection, author (userId), updated-after; `offset` skips the first N hits for pagination. |
+| `outline_search(query, limit?, offset?, collectionId?, author?, userId?, updatedAfter?)` | Keyword search; returns the match **total**, plus title, snippet, document id, author name and link per hit. Optional filters: collection, author (name/email — resolved via users.list and pushed down server-side as `userId`; ambiguous names return the candidate list), updated-after; `offset` skips the first N hits for pagination. |
 | `outline_get_document(id, maxLength?)` | Fetch a document's full Markdown by id; `maxLength` caps the returned text (default 20000). |
 | `outline_count()` | Total number of documents in the knowledge base (`documents.list` total, exact; excludes trashed/deleted — the true total may be slightly higher). |
 | `outline_list_collections()` | List visible collections (id, name, permission, document count). |
+| `outline_list_users()` | List workspace users (id, name, email) — resolve "documents by 张三" into the author/userId filter for `outline_search`. |
 | `outline_resolve_path(path)` | Resolve a human path like `Knowledge Base/Directory A/Subdirectory` into `collectionId` + `parentDocumentId`; returns the resolved full path. |
 | `outline_list_children(parentId)` | List direct child documents of a directory (parent document). |
 | `outline_doc_template()` | Return the standard requirement-document template (Markdown) + required section list — call it before writing a requirement doc. |
-| `outline_save_local(source, id?, title?)` | **Local save** — write a fetched Outline document to a local Markdown file (`YYYY-MM-DD-title.md`, auto-increment on name clash, never overwrites). Only writes to local disk; does not touch the knowledge base. Results of search/get_document show a prompt offering this. |
+| `outline_save_local(ids, title?)` | **Local save** — write one or many fetched Outline documents to a local Markdown file. `ids` is a comma-separated list from search results (up to 50); multiple docs merge into one file with a table of contents. Filename `YYYY-MM-DD-title.md` (single doc → its title, many → `首篇标题等N篇`); auto-increments on name clash, never overwrites. **Writes only to local disk; never touches the knowledge base.** Search/get_document results end with a prompt offering this. |
 | `outline_create(collectionId, title, text, publish?, parentDocumentId?)` | **Write** — create a document (default published; nest under a directory via `parentDocumentId`). **Requires approval** showing the resolved full path. |
 | `outline_update_document(id, title?, text?)` | **Write** — update a document's title/body. **Requires approval** showing the document path. |
 | `outline_delete(id)` | **Write, irreversible** — delete a document. **Double approval**: a first prompt, then a second confirmation before deletion. |

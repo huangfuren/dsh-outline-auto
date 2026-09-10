@@ -8,6 +8,8 @@ export interface OutlineSearchHit {
   collectionId: string
   updatedAt: string
   parentDocumentId?: string
+  /** 作者显示名（users.list 映射；接口不可用或无作者时缺省）。 */
+  authorName?: string
 }
 
 /** 搜索结果：命中列表 + 该关键词在知识库中的匹配总数（pagination.total）。 */
@@ -42,6 +44,13 @@ export interface OutlineCreateResult {
   published: boolean
 }
 
+/** Outline 用户（users.list 条目）。 */
+export interface OutlineUser {
+  id: string
+  name: string
+  email?: string
+}
+
 export interface OutlineClientOptions {
   baseUrl: string
   apiToken: string
@@ -65,6 +74,8 @@ export class OutlineClient {
   private static readonly MAX_RETRIES = 3
   /** listCollections 的短期缓存，供审批钩子解析集合名。 */
   private collectionsCache: { expires: number; collections: OutlineCollection[] } | null = null
+  /** listUsers 的短期缓存（id→name 映射 + 姓名解析复用）。 */
+  private usersCache: { expires: number; users: OutlineUser[] } | null = null
 
   constructor(options: OutlineClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '')
@@ -186,10 +197,12 @@ export class OutlineClient {
     })
     const data = Array.isArray(json.data) ? json.data : []
     const pagination = (json.pagination ?? {}) as { total?: unknown }
-    const hits: OutlineSearchHit[] = data.map((item) => {
+    const mapped = data.map((item) => {
       const record = (item ?? {}) as Record<string, unknown>
       const document = (record.document ?? {}) as Record<string, unknown>
-      return {
+      const rawUser = (document.user ?? record.user ?? {}) as Record<string, unknown>
+      const authorId = typeof rawUser.id === 'string' && rawUser.id !== '' ? rawUser.id : undefined
+      const hit: OutlineSearchHit = {
         id: typeof document.id === 'string' ? document.id : '',
         title: OutlineClient.stripHtml(typeof document.title === 'string' ? document.title : '(无标题)'),
         url: this.absolutize(typeof document.url === 'string' ? document.url : ''),
@@ -200,7 +213,17 @@ export class OutlineClient {
           ? { parentDocumentId: String(document.parentDocumentId) }
           : {}),
       }
+      return { hit, authorId }
     })
+    const hits = mapped.map((m) => m.hit)
+    // 解析作者名（users.list 失败则降级，不阻断搜索）。仅当确有作者时才拉一次映射。
+    const authorIds = [...new Set(mapped.map((m) => m.authorId).filter((x): x is string => x !== undefined))]
+    if (authorIds.length > 0) {
+      const nameMap = await this.userNameMap()
+      for (const m of mapped) {
+        if (m.authorId !== undefined) m.hit.authorName = nameMap.get(m.authorId)
+      }
+    }
     const total = typeof pagination.total === 'number' ? pagination.total : hits.length
     return { total, hits }
   }
@@ -238,6 +261,61 @@ export class OutlineClient {
     }
     this.collectionsCache = { expires: Date.now() + this.cacheTtlMs, collections }
     return collections
+  }
+
+  /** 列出当前 token 可见的用户（短期缓存）。用于"某人写的文档"姓名→id 解析。 */
+  async listUsers(force = false): Promise<OutlineUser[]> {
+    const cached = this.usersCache
+    if (!force && cached !== null && cached.expires > Date.now()) return cached.users
+    const users: OutlineUser[] = []
+    const pageSize = 100
+    for (let offset = 0; ; offset += pageSize) {
+      const json = await this.requestJson(`/api/users.list?limit=${pageSize}&offset=${offset}`, {})
+      const data = Array.isArray(json.data) ? json.data : []
+      for (const item of data) {
+        const u = (item ?? {}) as Record<string, unknown>
+        users.push({
+          id: typeof u.id === 'string' ? u.id : '',
+          name: typeof u.name === 'string' ? u.name : '(未命名用户)',
+          ...(typeof u.email === 'string' && u.email !== '' ? { email: u.email } : {}),
+        })
+      }
+      const pagination = (json.pagination ?? {}) as { total?: unknown }
+      const total = typeof pagination.total === 'number' ? pagination.total : users.length
+      if (data.length === 0) break
+      if (users.length >= total) break
+    }
+    this.usersCache = { expires: Date.now() + this.cacheTtlMs, users }
+    return users
+  }
+
+  /**
+   * 按姓名或邮箱找用户：先精确匹配（唯一才算），再子串包含匹配（不区分大小写）。
+   * 返回所有匹配（0 个 = 未找到；>1 个 = 有歧义，由调用方列出候选）。
+   */
+  async findUsers(query: string): Promise<OutlineUser[]> {
+    const q = query.trim().toLowerCase()
+    if (q === '') return []
+    let users: OutlineUser[]
+    try {
+      users = await this.listUsers()
+    } catch {
+      // users.list 不可用时降级：返回空，让上层提示"未找到作者/可先用 outline_list_users 排查"
+      return []
+    }
+    const exact = users.filter((u) => u.name.toLowerCase() === q || u.email?.toLowerCase() === q)
+    if (exact.length > 0) return exact
+    return users.filter((u) => u.name.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q) === true)
+  }
+
+  /** id→姓名映射（基于 users.list 缓存）。users.list 不可用时返回空映射（fail-open）。 */
+  private async userNameMap(): Promise<Map<string, string>> {
+    try {
+      const users = await this.listUsers()
+      return new Map(users.map((u) => [u.id, u.name]))
+    } catch {
+      return new Map()
+    }
   }
 
   /** 在指定集合创建文档（默认发布；可指定父文档实现嵌套）。 */

@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Release-specific notes 
 
 ## [Unreleased]
 
+## [v0.6.0] - 2026-09-08
+
+### Added
+- **作者过滤（outline_list_users + outline_search.author）**：新增 `outline_list_users` 列出工作区成员（id/姓名/邮箱）；`outline_search` 新增 `author` 参数（姓名/邮箱），先经 `users.list` 解析（精确唯一→直用、多匹配→返回候选、无匹配→提示未找到），再把 `userId` 下推到 Outline 服务端过滤，比盲搜后人工挑更高效、更省 token。搜索命中附带作者名（`authorName`，实例未返回或 users.list 不可用时缺省）。
+- **outline_save_local 批量保存闭环**：移除 `source` 单模限制，改为 `ids` 逗号分隔文档 id 列表（最多 50 篇），把一篇或多篇 Outline 文档整理成本地 Markdown（单篇用其标题、多篇合并为带目录的一个文件 `首篇标题等N篇.md`），同名自动 `-2` 序号不覆盖。配合 search/get_document 末尾提示，真正闭环"把本次结果存到本地"。
+
+### Changed
+- `outline_search` 的 `userId` 过滤保留为精确入口；新增更友好的 `author`（姓名/邮箱）入口。
+
 ## [v0.5.0] - 2026-09-08
 
 ### Added

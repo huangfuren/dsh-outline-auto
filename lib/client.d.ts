@@ -6,6 +6,8 @@ export interface OutlineSearchHit {
     collectionId: string;
     updatedAt: string;
     parentDocumentId?: string;
+    /** 作者显示名（users.list 映射；接口不可用或无作者时缺省）。 */
+    authorName?: string;
 }
 /** 搜索结果：命中列表 + 该关键词在知识库中的匹配总数（pagination.total）。 */
 export interface OutlineSearchResult {
@@ -35,6 +37,12 @@ export interface OutlineCreateResult {
     title: string;
     published: boolean;
 }
+/** Outline 用户（users.list 条目）。 */
+export interface OutlineUser {
+    id: string;
+    name: string;
+    email?: string;
+}
 export interface OutlineClientOptions {
     baseUrl: string;
     apiToken: string;
@@ -57,6 +65,8 @@ export declare class OutlineClient {
     private static readonly MAX_RETRIES;
     /** listCollections 的短期缓存，供审批钩子解析集合名。 */
     private collectionsCache;
+    /** listUsers 的短期缓存（id→name 映射 + 姓名解析复用）。 */
+    private usersCache;
     constructor(options: OutlineClientOptions);
     /** 安全校验：拒绝公网明文 http（避免 Token 明文传输），允许 https 以及本地/内网私有地址。 */
     private assertAllowedUrl;
@@ -75,6 +85,15 @@ export declare class OutlineClient {
     countDocuments(filters?: Record<string, unknown>): Promise<number>;
     /** 列出当前 token 可见的集合（短期缓存）。注：实例要求 collections.list 带查询串。 */
     listCollections(force?: boolean): Promise<OutlineCollection[]>;
+    /** 列出当前 token 可见的用户（短期缓存）。用于"某人写的文档"姓名→id 解析。 */
+    listUsers(force?: boolean): Promise<OutlineUser[]>;
+    /**
+     * 按姓名或邮箱找用户：先精确匹配（唯一才算），再子串包含匹配（不区分大小写）。
+     * 返回所有匹配（0 个 = 未找到；>1 个 = 有歧义，由调用方列出候选）。
+     */
+    findUsers(query: string): Promise<OutlineUser[]>;
+    /** id→姓名映射（基于 users.list 缓存）。users.list 不可用时返回空映射（fail-open）。 */
+    private userNameMap;
     /** 在指定集合创建文档（默认发布；可指定父文档实现嵌套）。 */
     createDocument(input: {
         collectionId: string;

@@ -1,7 +1,7 @@
 import { mkdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { OutlineClient, OutlineSearchResult, OutlineDocument, OutlineCollection, OutlineCreateResult } from './client.js'
+import type { OutlineClient, OutlineSearchResult, OutlineDocument, OutlineCollection, OutlineCreateResult, OutlineUser } from './client.js'
 
 export const SEARCH_MAX_LIMIT = 25
 export const DOCUMENT_DEFAULT_MAX_LENGTH = 20000
@@ -25,7 +25,8 @@ function renderSearchResults(result: OutlineSearchResult): string {
   const head = `找到 ${hits.length} 篇文档${total > hits.length ? `（关键词共匹配 ${total} 篇，显示前 ${hits.length} 篇）` : ''}：`
   const lines = hits.map((hit) => {
     const meta = hit.snippet.length > 0 ? ` — ${hit.snippet}` : ''
-    return `- [${escapeLinkText(hit.title)}](${wrapUrl(hit.url)})${meta}（id: ${hit.id}）`
+    const author = hit.authorName !== undefined && hit.authorName !== '' ? `（作者：${hit.authorName}）` : ''
+    return `- [${escapeLinkText(hit.title)}](${wrapUrl(hit.url)})${meta}（id: ${hit.id}）${author}`
   })
   return `${head}\n${lines.join('\n')}\n\n如需查看某篇全文，请使用 outline_get_document 工具（参数 id）。`
 }
@@ -103,17 +104,27 @@ export async function dedupeFileName(
   }
 }
 
+/** 单次批量保存的文档数上限（防误传全库 id 拖垮 API）。 */
+export const SAVE_MAX_DOCS = 50
+
+/** 把多篇文档合并为一份带目录的 Markdown（目录 → 各篇全文）。 */
+export function mergeDocumentsToMarkdown(docs: OutlineDocument[], title: string): string {
+  const head = [`# ${title}`, '', `- 导出时间：${new Date().toLocaleString()}`, `- 文档数：${docs.length}`, '', '## 目录', '']
+  docs.forEach((d, i) => head.push(`${i + 1}. [${d.title}](${d.url})`))
+  const body = docs.map((d) => `\n\n---\n\n${documentToMarkdown(d)}`).join('')
+  return head.join('\n') + body
+}
+
 export function outlineSaveLocalTool(
   getSaveDir: () => string,
   makeClient: () => OutlineClient,
 ) {
   return defineTool({
     name: 'outline_save_local',
-    description: '把最近一次 Outline 搜索结果或文档内容整理成 Markdown 文件保存到本地目录（配置的 localSaveDir，默认 $DSH_HOME/outline-auto-saves）。用户在对话中同意保存后调用本工具。',
+    description: '把指定的 Outline 文档（一篇或多篇）整理成 Markdown 文件保存到本地目录（配置的 localSaveDir，默认 $DSH_HOME/outline-auto-saves）。用户在对话中同意保存后调用本工具；批量保存"刚才的搜索结果"时，把各条结果的 id 一起传入 ids。',
     parameters: {
-      source: { type: 'string', required: true, description: '保存来源：search（最近一次搜索结果）或 document（指定文档）' },
-      id: { type: 'string', description: 'source=document 时必填：文档 id（来自 outline_search / outline_get_document）' },
-      title: { type: 'string', description: '可选，文件标题（默认取文档标题或搜索关键词 + 日期）' },
+      ids: { type: 'string', required: true, description: `要保存的文档 id，逗号分隔（来自 outline_search 结果，最多 ${SAVE_MAX_DOCS} 篇）` },
+      title: { type: 'string', description: '可选，文件标题；默认单篇取文档标题、多篇取"首篇标题等N篇"' },
     },
     output: {
       schema: {
@@ -122,11 +133,12 @@ export function outlineSaveLocalTool(
         properties: {
           path: { type: 'string', required: true, description: '写入的本地文件绝对路径' },
           bytes: { type: 'integer', required: true, description: '写入字节数' },
+          documents: { type: 'integer', required: true, description: '实际合并保存的文档篇数' },
         },
       },
       render: (_args, value) => [{
         type: 'text',
-        text: `💾 已保存到本地：${value.path}（${value.bytes} 字节）`,
+        text: `💾 已保存 ${value.documents} 篇文档到本地：${value.path}（${value.bytes} 字节）`,
       }],
     },
     async execute(args) {
@@ -134,16 +146,22 @@ export function outlineSaveLocalTool(
       if (dir === '') {
         throw new Error('本地保存目录未配置。请在 设置 → 插件 → 插件配置 的「Outline 知识库」卡片中填写本地保存目录。')
       }
-      if (args.source !== 'document') {
-        throw new Error('当前版本 outline_save_local 仅支持 source=document（把指定 Outline 文档存为本地 Markdown）。搜索结果保存功能尚未开放。')
+      const ids = [...new Set((args.ids ?? '').split(',').map((s) => s.trim()).filter((s) => s !== ''))]
+      if (ids.length === 0) {
+        throw new Error('请提供至少一个文档 id（参数 ids，逗号分隔，来自 outline_search 结果）。')
       }
-      if (args.id === undefined || args.id.trim() === '') {
-        throw new Error('source=document 时必须提供文档 id（参数 id）。')
+      if (ids.length > SAVE_MAX_DOCS) {
+        throw new Error(`一次最多保存 ${SAVE_MAX_DOCS} 篇（当前 ${ids.length} 篇），请分批保存。`)
       }
       const client = makeClient()
-      const doc = await client.getDocument(args.id.trim())
-      const title = (args.title ?? '').trim() !== '' ? (args.title ?? '').trim() : doc.title
-      const markdown = documentToMarkdown(doc)
+      // 串行拉取：复用 getDocument 缓存，且对 Outline 限流友好（多篇合并场景 429 退避由 client 处理）。
+      const docs: OutlineDocument[] = []
+      for (const id of ids) {
+        docs.push(await client.getDocument(id))
+      }
+      const defaultTitle = docs.length === 1 ? docs[0]!.title : `${docs[0]!.title}等${docs.length}篇`
+      const title = (args.title ?? '').trim() !== '' ? (args.title ?? '').trim() : defaultTitle
+      const markdown = docs.length === 1 ? documentToMarkdown(docs[0]!) : mergeDocumentsToMarkdown(docs, title)
       const fileName = await dedupeFileName(dir, buildSaveFileName(title), async (p) => {
         try {
           await stat(p)
@@ -155,7 +173,7 @@ export function outlineSaveLocalTool(
       const filePath = path.join(dir, fileName)
       await mkdir(dir, { recursive: true })
       await writeFile(filePath, markdown, 'utf8')
-      return { path: filePath, bytes: Buffer.byteLength(markdown, 'utf8') }
+      return { path: filePath, bytes: Buffer.byteLength(markdown, 'utf8'), documents: docs.length }
     },
   })
 }
@@ -168,7 +186,8 @@ export function outlineSearchTool(makeClient: () => OutlineClient, defaultLimit:
       query: { type: 'string', required: true, description: '搜索关键词' },
       limit: { type: 'integer', description: `返回结果条数（默认 ${defaultLimit}，最大 ${SEARCH_MAX_LIMIT}）` },
       collectionId: { type: 'string', description: '可选，限定搜索某个集合（用 outline_list_collections 获取 id）' },
-      userId: { type: 'string', description: '可选，按作者过滤（用户 id，如查"某人的文档"）' },
+      author: { type: 'string', description: '可选，按作者过滤：姓名或邮箱（先精确后模糊匹配；匹配到多人时返回候选列表，请换 outline_list_users 查 id）' },
+      userId: { type: 'string', description: '可选，按作者过滤（用户 id，精确值；可先用 outline_list_users 查询）' },
       updatedAfter: { type: 'string', description: '可选，只返回此时间之后更新的文档（ISO 时间，如 2026-08-01T00:00:00Z 或 2026-08-01）' },
       offset: { type: 'integer', description: '可选，跳过前 N 条结果（配合 limit 翻页查看更多，默认 0）' },
     },
@@ -192,6 +211,7 @@ export function outlineSearchTool(makeClient: () => OutlineClient, defaultLimit:
                 collectionId: { type: 'string', required: true },
                 updatedAt: { type: 'string', required: true },
                 parentDocumentId: { type: 'string', description: '父文档 id（顶层文档为空）' },
+                authorName: { type: 'string', description: '作者显示名（实例未返回作者或 users.list 不可用时缺省）' },
               },
             },
           },
@@ -206,10 +226,54 @@ export function outlineSearchTool(makeClient: () => OutlineClient, defaultLimit:
       const limit = Math.min(SEARCH_MAX_LIMIT, Math.max(1, args.limit ?? defaultLimit))
       const offset = Math.max(0, args.offset ?? 0)
       const client = makeClient()
+      // 作者名 → userId 解析：优先精确/模糊匹配 users.list，下推到 Outline 服务端过滤（比盲搜人肉挑更高效、更省 token）。
+      let resolvedUserId = args.userId
+      if (args.author !== undefined && args.author.trim() !== '' && (resolvedUserId === undefined || resolvedUserId.trim() === '')) {
+        const matches = await client.findUsers(args.author.trim())
+        if (matches.length === 1) {
+          resolvedUserId = matches[0]!.id
+        } else if (matches.length > 1) {
+          const candidates = matches.map((m) => `- ${m.name}（id: ${m.id}${m.email ? `, ${m.email}` : ''}）`).join('\n')
+          throw new Error(`"${args.author}" 匹配到多位作者，请改用 outline_list_users 确认后传入 userId：\n${candidates}`)
+        } else {
+          throw new Error(`未找到名为 "${args.author}" 的作者（可先用 outline_list_users 查看全部成员）。`)
+        }
+      }
       return client.searchDocuments(args.query, limit, args.collectionId, {
-        userId: args.userId,
+        userId: resolvedUserId,
         updatedAfter: args.updatedAfter,
       }, offset)
+    },
+  })
+}
+
+export function outlineListUsersTool(makeClient: () => OutlineClient) {
+  return defineTool({
+    name: 'outline_list_users',
+    description: '列出 Outline 工作区用户（id/姓名/邮箱），用于把"某人写的文档"中的姓名解析成 outline_search 的 author/userId 参数。',
+    parameters: {},
+    output: {
+      schema: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            id: { type: 'string', required: true },
+            name: { type: 'string', required: true },
+            email: { type: 'string', description: '邮箱（实例未返回时缺省）' },
+          },
+        },
+      },
+      render: (_args, value: OutlineUser[]) => [{
+        type: 'text',
+        text: value.length === 0
+          ? '当前 token 可见范围内没有用户。'
+          : `用户（${value.length} 个）：\n` + value.map((u) => `- ${u.name}（id: ${u.id}${u.email ? `, ${u.email}` : ''}）`).join('\n'),
+      }],
+    },
+    async execute() {
+      return makeClient().listUsers()
     },
   })
 }

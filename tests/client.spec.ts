@@ -523,4 +523,74 @@ describe('OutlineClient', () => {
     await client.getDocument('doc-1') // 已过期 → 重新请求
     expect(calls).toBe(2)
   })
+
+  it('listUsers 分页拉齐 users.list 全部成员', async () => {
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async (url) => {
+        if (!url.includes('users.list')) throw new Error(`unexpected url ${url}`)
+        if (url.includes('offset=0')) {
+          return { status: 200, body: { data: Array.from({ length: 100 }, (_, i) => ({ id: `u${i}`, name: `用户${i}` })), pagination: { total: 101 } } }
+        }
+        return { status: 200, body: { data: [{ id: 'u100', name: '用户100', email: 'a@b.c' }], pagination: { total: 101 } } }
+      }),
+    })
+    const users = await client.listUsers()
+    expect(users).toHaveLength(101)
+    expect(users[100]).toMatchObject({ id: 'u100', name: '用户100', email: 'a@b.c' })
+  })
+
+  it('findUsers 先精确后模糊（不区分大小写，含邮箱）', async () => {
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async () => ({
+        status: 200,
+        body: { data: [
+          { id: 'u1', name: '张三' },
+          { id: 'u2', name: '张三丰' },
+          { id: 'u3', name: 'Li Si', email: 'lisi@example.com' },
+        ], pagination: { total: 3 } },
+      })),
+    })
+    expect(await client.findUsers('张三')).toHaveLength(1) // 精确唯一
+    expect((await client.findUsers('张三'))[0]!.id).toBe('u1')
+    expect(await client.findUsers('张')).toHaveLength(2) // 子串两人
+    expect((await client.findUsers('lisi'))[0]!.id).toBe('u3') // 邮箱大小写不敏感
+    expect(await client.findUsers('不存在')).toHaveLength(0)
+  })
+
+  it('searchDocuments 把 document.user.id 映射为 authorName；users.list 失败时降级不阻断', async () => {
+    const withUsers = {
+      data: [{ document: { id: 'd1', title: 'T', url: '/d', collectionId: 'c', updatedAt: '', user: { id: 'u1', name: '张三' } }, context: '' }],
+      pagination: { total: 1 },
+    }
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async (url) => {
+        if (url.includes('users.list')) return { status: 200, body: { data: [{ id: 'u1', name: '张三' }], pagination: { total: 1 } } }
+        return { status: 200, body: withUsers }
+      }),
+    })
+    const { hits } = await client.searchDocuments('x', 5)
+    expect(hits[0]!.authorName).toBe('张三')
+  })
+
+  it('searchDocuments 在 users.list 不可用时仍返回结果（authorName 缺省）', async () => {
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      fetchImpl: stubFetch(async (url) => {
+        if (url.includes('users.list')) return { status: 403, body: { message: 'forbidden' } }
+        return { status: 200, body: {
+          data: [{ document: { id: 'd1', title: 'T', url: '/d', collectionId: 'c', updatedAt: '', user: { id: 'u1' } }, context: '' }],
+          pagination: { total: 1 },
+        } }
+      }),
+    })
+    const { hits } = await client.searchDocuments('x', 5)
+    expect(hits[0]!.authorName).toBeUndefined()
+  })
 })

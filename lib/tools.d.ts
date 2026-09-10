@@ -20,8 +20,13 @@ export declare function documentToMarkdown(doc: OutlineDocument): string;
 export declare function buildSaveFileName(title: string, now?: Date): string;
 /** 冲突时追加序号：name.md → name-2.md → name-3.md …（存在性由传入的 exists 检查，便于测试）。 */
 export declare function dedupeFileName(dir: string, fileName: string, exists: (p: string) => Promise<boolean>): Promise<string>;
+/** 单次批量保存的文档数上限（防误传全库 id 拖垮 API）。 */
+export declare const SAVE_MAX_DOCS = 50;
+/** 把多篇文档合并为一份带目录的 Markdown（目录 → 各篇全文）。 */
+export declare function mergeDocumentsToMarkdown(docs: OutlineDocument[], title: string): string;
 export declare function outlineSaveLocalTool(getSaveDir: () => string, makeClient: () => OutlineClient): import("@deepseek-ai/dsh-tools").ToolDefinition;
 export declare function outlineSearchTool(makeClient: () => OutlineClient, defaultLimit: number, getSaveDir?: () => string): import("@deepseek-ai/dsh-tools").ToolDefinition;
+export declare function outlineListUsersTool(makeClient: () => OutlineClient): import("@deepseek-ai/dsh-tools").ToolDefinition;
 export declare function outlineCountTool(makeClient: () => OutlineClient): import("@deepseek-ai/dsh-tools").ToolDefinition;
 export declare function outlineGetDocumentTool(makeClient: () => OutlineClient, getSaveDir?: () => string): import("@deepseek-ai/dsh-tools").ToolDefinition;
 /** 审批提示文案：完整路径 + 标题 + 内容预览（前 100 字，纯函数可单测）。 */

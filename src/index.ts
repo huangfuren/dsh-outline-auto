@@ -7,7 +7,7 @@ import { OutlineClient } from './client.js'
 import {
   outlineSearchTool, outlineGetDocumentTool, outlineCountTool, outlineListCollectionsTool,
   outlineResolvePathTool, outlineCreateTool, outlineUpdateDocumentTool, outlineDeleteTool,
-  outlineListChildrenTool, outlineDocTemplateTool, outlineSaveLocalTool,
+  outlineListChildrenTool, outlineDocTemplateTool, outlineSaveLocalTool, outlineListUsersTool,
   buildCreateApprovalReason, resolveWriteGuard,
   parseWritablePaths, resolvePathGuard, resolveLocalSaveDir,
 } from './tools.js'
@@ -84,6 +84,7 @@ export function apply(ctx: Context, config: Config = {} as Config) {
   ctx.tools.register(outlineGetDocumentTool(makeClient, getLocalSaveDir))
   ctx.tools.register(outlineCountTool(makeClient))
   ctx.tools.register(outlineListCollectionsTool(makeClient))
+  ctx.tools.register(outlineListUsersTool(makeClient))
   ctx.tools.register(outlineResolvePathTool(makeClient))
   ctx.tools.register(outlineListChildrenTool(makeClient))
   ctx.tools.register(outlineDocTemplateTool())
