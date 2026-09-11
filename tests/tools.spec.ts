@@ -7,6 +7,7 @@ import {
   outlineCreateTool, outlineUpdateDocumentTool, outlineDeleteTool, outlineListChildrenTool, outlineDocTemplateTool,
   outlineSaveLocalTool, outlineListUsersTool, buildCreateApprovalReason, resolveWriteGuard, resolvePathGuard, parseWritablePaths,
   renderLocalSaveHint, resolveLocalSaveDir, sanitizeFileName, buildSaveFileName, dedupeFileName, documentToMarkdown, mergeDocumentsToMarkdown,
+  rerankHits, synonymVariants,
 } from '../src/tools.js'
 import { OutlineApiError } from '../src/errors.js'
 import type { OutlineClient } from '../src/client.js'
@@ -416,6 +417,177 @@ describe('outline_list_users', () => {
     const r = await tool.execute({} as never, exec) as any
     expect(r).toHaveLength(2)
     expect(r[0]).toMatchObject({ id: 'u1', name: '张三', email: 'z@x.com' })
+  })
+})
+
+describe('outline_search all=true 自动翻页', () => {
+  const hit = (id: string) => ({ id, title: id, url: '/d', snippet: '', collectionId: '', updatedAt: '' })
+  it('逐页拉取并按 id 去重合并', async () => {
+    const pages = [
+      { total: 3, hits: [hit('a'), hit('b')] },
+      { total: 3, hits: [hit('b'), hit('c')] },
+      { total: 3, hits: [] },
+    ]
+    let call = 0
+    const offsets: number[] = []
+    const tool = outlineSearchTool(() => fakeClient({
+      searchDocuments: async (_q, _l, _c, _f, offset) => { offsets.push(offset ?? 0); return pages[call++] ?? { total: 3, hits: [] } },
+    }), 10)
+    const r = await tool.execute({ query: 'x', all: true }, exec) as any
+    expect(offsets).toEqual([0, 25])
+    expect(r.hits.map((h: any) => h.id)).toEqual(['a', 'b', 'c'])
+    expect(r.total).toBe(3)
+  })
+  it('服务端无视 offset（整页重复）→ 不死循环', async () => {
+    let call = 0
+    const tool = outlineSearchTool(() => fakeClient({
+      searchDocuments: async () => { call += 1; return { total: 999, hits: [hit('a'), hit('b')] } },
+    }), 10)
+    const r = await tool.execute({ query: 'x', all: true }, exec) as any
+    expect(call).toBe(2) // 第二页 fresh=0 即停
+    expect(r.hits).toHaveLength(2)
+  })
+  it('默认单页不受影响', async () => {
+    let call = 0
+    const tool = outlineSearchTool(() => fakeClient({
+      searchDocuments: async () => { call += 1; return { total: 99, hits: [hit('a')] } },
+    }), 10)
+    await tool.execute({ query: 'x' }, exec)
+    expect(call).toBe(1)
+  })
+})
+
+describe('outline_search 多词零命中回退', () => {
+  const hit = (id: string) => ({ id, title: id, url: '/d', snippet: '', collectionId: '', updatedAt: '' })
+  it('多词无结果 → 首词重试并标注 retriedWith', async () => {
+    const seenQueries: string[] = []
+    const tool = outlineSearchTool(() => fakeClient({
+      searchDocuments: async (q: string) => {
+        seenQueries.push(q)
+        return q === '部署' ? { total: 1, hits: [hit('a')] } : { total: 0, hits: [] }
+      },
+    }), 10)
+    const r = await tool.execute({ query: '部署 规范 详细' }, exec) as any
+    expect(seenQueries).toEqual(['部署 规范 详细', '部署'])
+    expect(r.retriedWith).toBe('部署')
+    expect(r.hits).toHaveLength(1)
+  })
+  it('单词零命中不重试', async () => {
+    let call = 0
+    const tool = outlineSearchTool(() => fakeClient({
+      searchDocuments: async () => { call += 1; return { total: 0, hits: [] } },
+    }), 10)
+    const r = await tool.execute({ query: '孤词' }, exec) as any
+    expect(call).toBe(1)
+    expect(r.retriedWith).toBeUndefined()
+  })
+  it('首词也无结果 → 保持原零结果（不误导）', async () => {
+    const tool = outlineSearchTool(() => fakeClient({
+      searchDocuments: async () => ({ total: 0, hits: [] }),
+    }), 10)
+    const r = await tool.execute({ query: '甲 乙' }, exec) as any
+    expect(r.total).toBe(0)
+    expect(r.retriedWith).toBeUndefined()
+  })
+})
+
+describe('搜索结果渲染：翻页提示与回退标注', () => {
+  const hit = (id: string) => ({ id, title: id, url: 'https://x/d', snippet: '', collectionId: '', updatedAt: '' })
+  const tool = outlineSearchTool(() => fakeClient(), 10)
+  it('有更多未显示 → 提示 offset/all 翻页', () => {
+    const text = (tool as any).output.render({}, { total: 9, hits: [hit('a')] })[0].text
+    expect(text).toContain('还有 8 篇未显示')
+    expect(text).toContain('offset')
+  })
+  it('all 模式抓齐 → 显示已抓全部', () => {
+    const text = (tool as any).output.render({ all: true }, { total: 2, hits: [hit('a'), hit('b')] })[0].text
+    expect(text).toContain('已抓全部 2 篇')
+    expect(text).not.toContain('未显示')
+  })
+  it('回退重试 → 首行标注实际生效词', () => {
+    const text = (tool as any).output.render({}, { total: 1, hits: [hit('a')], retriedWith: '部署' })[0].text
+    expect(text).toContain('已用 "部署" 重试命中')
+  })
+})
+
+describe('rerankHits（本地重排）', () => {
+  const hit = (id: string, title: string, snippet: string, updatedAt = '2026-09-01T00:00:00Z') =>
+    ({ id, title, url: '/d', snippet, collectionId: '', updatedAt })
+  it('标题命中排在仅摘要命中之前', () => {
+    const r = rerankHits([hit('a', '无关标题', '部署在这里出现'), hit('b', '部署规范', '其他内容')], '部署')
+    expect(r.map((h) => h.id)).toEqual(['b', 'a'])
+  })
+  it('同分保持服务端原序（稳定）', () => {
+    const r = rerankHits([hit('a', '部署 X', ''), hit('b', '部署 Y', '')], '部署')
+    expect(r.map((h) => h.id)).toEqual(['a', 'b'])
+  })
+  it('新近度加成：标题同级时新文档靠前', () => {
+    const r = rerankHits([
+      hit('old', '部署 旧', '', '2020-01-01T00:00:00Z'),
+      hit('new', '部署 新', '', '2026-08-01T00:00:00Z'),
+    ], '部署')
+    expect(r.map((h) => h.id)).toEqual(['new', 'old'])
+  })
+  it('0/1 条命中或空查询原样返回', () => {
+    expect(rerankHits([], 'x')).toEqual([])
+    const one = [hit('a', 'T', '')]
+    expect(rerankHits(one, 'x')).toBe(one)
+    const two = [hit('a', 'T1', ''), hit('b', 'T2', '')]
+    expect(rerankHits(two, '   ')).toBe(two)
+  })
+})
+
+describe('synonymVariants（同义词候选）', () => {
+  it('整词命中词表', () => {
+    expect(synonymVariants('部署', { 部署: ['上线', '发布'] })).toEqual(['上线', '发布'])
+  })
+  it('多词查询逐词替换', () => {
+    expect(synonymVariants('部署 规范', { 部署: ['上线'] })).toEqual(['上线 规范'])
+  })
+  it('去重 + 排除原词 + 上限 3', () => {
+    const r = synonymVariants('甲', { 甲: ['乙', '乙', '甲', '丙', '丁', '戊'] })
+    expect(r).toEqual(['乙', '丙', '丁'])
+  })
+  it('无词表命中返回空', () => {
+    expect(synonymVariants('部署', {})).toEqual([])
+    expect(synonymVariants('  ', { 部署: ['上线'] })).toEqual([])
+  })
+})
+
+describe('outline_search 同义词回退阶梯', () => {
+  const hit = (id: string) => ({ id, title: id, url: '/d', snippet: '', collectionId: '', updatedAt: '' })
+  it('首词失败后按同义词变体重试并标注', async () => {
+    const seen: string[] = []
+    const tool = outlineSearchTool(() => fakeClient({
+      searchDocuments: async (q: string) => {
+        seen.push(q)
+        return q.startsWith('上线') ? { total: 1, hits: [hit('a')] } : { total: 0, hits: [] }
+      },
+    }), 10, undefined, () => ({ 部署: ['上线'] }))
+    const r = await tool.execute({ query: '部署 规范' }, exec) as any
+    expect(seen).toEqual(['部署 规范', '部署', '上线 规范'])
+    expect(r.retriedWith).toBe('上线 规范')
+  })
+  it('未配置同义词：阶梯只剩首词', async () => {
+    let call = 0
+    const tool = outlineSearchTool(() => fakeClient({
+      searchDocuments: async () => { call += 1; return { total: 0, hits: [] } },
+    }), 10)
+    await tool.execute({ query: '孤词' }, exec)
+    expect(call).toBe(1)
+  })
+  it('结果按重排规则返回（标题命中优先）', async () => {
+    const tool = outlineSearchTool(() => fakeClient({
+      searchDocuments: async () => ({
+        total: 2,
+        hits: [
+          { id: 'a', title: '无关', url: '/d', snippet: '部署出现在摘要', collectionId: '', updatedAt: '2026-09-01T00:00:00Z' },
+          { id: 'b', title: '部署规范', url: '/d', snippet: '', collectionId: '', updatedAt: '2026-09-01T00:00:00Z' },
+        ],
+      }),
+    }), 10)
+    const r = await tool.execute({ query: '部署' }, exec) as any
+    expect(r.hits.map((h: any) => h.id)).toEqual(['b', 'a'])
   })
 })
 

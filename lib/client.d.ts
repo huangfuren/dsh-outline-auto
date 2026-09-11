@@ -13,6 +13,8 @@ export interface OutlineSearchHit {
 export interface OutlineSearchResult {
     total: number;
     hits: OutlineSearchHit[];
+    /** 多词查询零命中时自动用首词重试成功后，记录实际生效的首词。 */
+    retriedWith?: string;
 }
 export interface OutlineDocument {
     id: string;
@@ -67,6 +69,9 @@ export declare class OutlineClient {
     private collectionsCache;
     /** listUsers 的短期缓存（id→name 映射 + 姓名解析复用）。 */
     private usersCache;
+    /** searchDocuments 结果的短期缓存（key = 归一化查询参数），同 query 连续提问不重复打 API。 */
+    private readonly searchCache;
+    private static readonly SEARCH_CACHE_MAX_ENTRIES;
     constructor(options: OutlineClientOptions);
     /** 安全校验：拒绝公网明文 http（避免 Token 明文传输），允许 https 以及本地/内网私有地址。 */
     private assertAllowedUrl;
@@ -81,6 +86,8 @@ export declare class OutlineClient {
         userId?: string;
         updatedAfter?: string;
     }, offset?: number): Promise<OutlineSearchResult>;
+    /** 写操作后失效搜索缓存（结果可能随增删改变化）。 */
+    private invalidateCaches;
     /** 统计 Outline 知识库文档总数（documents.list 分页 total；不含已删除/回收站文档）。 */
     countDocuments(filters?: Record<string, unknown>): Promise<number>;
     /** 列出当前 token 可见的集合（短期缓存）。注：实例要求 collections.list 带查询串。 */

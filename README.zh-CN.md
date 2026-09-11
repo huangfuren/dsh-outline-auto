@@ -4,7 +4,7 @@
 
 DeepSeek Harness 的 Outline 插件：在对话中搜索、读取并在用户审批后创建、更新或删除文档。插件只连接用户配置的 Outline 实例，不携带任何组织内部地址、token、集合名或文档内容。
 
-> 当前版本：0.6.0。支持的 DeepSeek Harness 基线为 `0.1.1-rc.2`，Node.js 需要 22.19 或更高版本；支持 Windows / macOS / Linux 三种平台。
+> 当前版本：0.7.0。支持的 DeepSeek Harness 基线为 `0.1.1-rc.2`，Node.js 需要 22.19 或更高版本；支持 Windows / macOS / Linux 三种平台。
 
 ## 功能
 
@@ -23,10 +23,10 @@ DeepSeek Harness 的 Outline 插件：在对话中搜索、读取并在用户审
 从公开 GitHub 仓库安装，并固定到最新发布 tag：
 
 ```bash
-dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.git#v0.6.0
+dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.git#v0.7.0
 ```
 
-`#v0.6.0` 后缀固定到该发布版本；去掉后缀则跟随 `main` 分支最新提交。
+`#v0.7.0` 后缀固定到该发布版本；去掉后缀则跟随 `main` 分支最新提交。
 
 安装后重启 `dsh web`。发布包已经包含编译后的 `lib/`，正常从 Git 安装时不依赖用户本地构建。安装钩子只会清理当前 DSH profile 中本插件旧名称 `dsh-outline-ai` 的残留引用，不会删除或改写其他插件。
 
@@ -73,6 +73,7 @@ node node_modules/dsh-outline-auto/scripts/repair-profile.mjs --profile-dir "$en
 | Service URL | Outline 实例根地址，例如 `https://outline.example.com` |
 | API Token | 在 Outline 的 API keys 页面创建 |
 | 可写目录（留空 = 只读） | 逗号分隔的目录路径，如 `集合A,集合B/目录1`；仅这些目录及其全部子级允许写入 |
+| 同义词表（仅配置行） | 插件配置行 `synonyms`（YAML 映射，如 `synonyms: { 部署: [上线, 发布] }`）：搜索零命中时按"原词 → 首词 → 同义词"阶梯自动重试 |
 
 也可以使用环境变量 `OUTLINE_BASE_URL` 和 `OUTLINE_API_TOKEN`，或在 `cordis.patch.yml` 的插件配置行中设置。公开包不得把内部集合名写入 schema 默认值、界面文案、测试数据或示例 URL。
 
@@ -97,6 +98,14 @@ node node_modules/dsh-outline-auto/scripts/repair-profile.mjs --profile-dir "$en
 - 想找"某人写的文档"时，先调 `outline_list_users` 拿到成员 id/姓名/邮箱。
 - 或直接给 `outline_search` 传 `author=姓名/邮箱`：插件会先 `outline_list_users` 解析（精确唯一→直接用、多匹配→返回候选列表让你确认、无匹配→提示"未找到"），再把 `userId` **下推到 Outline 服务端过滤**——比盲搜后人工挑更高效、更省 token。
 - 搜索命中会附带作者名（如 `（作者：张三）`，实例未返回或 users.list 不可用时缺省）。
+
+### 检索效率与准确度（v0.7.0）
+
+- **搜索缓存**：相同关键词（含过滤参数）短 TTL 缓存，同问不重打 API；增删改文档后自动失效。
+- **`all=true` 抓全**：需要"列出全部相关文档"时让 AI 传 `all=true`，插件自动翻页（上限 100 篇）并跨页去重；服务端无视 offset 时自动停，不会死循环。
+- **本地重排**：服务端排序基础上叠加——标题命中权重高于摘要命中，一年内更新的文档有新近度加成（同分保持服务端原序）。
+- **零命中回退阶梯**：原词 → 首词（多词查询 AND 易落空）→ 同义词表变体（配置 `synonyms`），命中即停并标注实际生效词。
+- **翻页提示**：结果未显示完时尾部提示可用 `offset` / `all` 继续获取。
 
 ### 本地保存（outline_save_local）
 

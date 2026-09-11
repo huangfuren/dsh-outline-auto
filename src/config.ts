@@ -16,6 +16,8 @@ export interface Config {
   cacheTtlMs?: number
   /** 本地保存目录：把搜索结果/文档存为 Markdown 文件的位置；留空 = $DSH_HOME/outline-auto-saves */
   localSaveDir?: string
+  /** 同义词/别名表（原词 → 替换词列表）：搜索零命中时自动用替换词重试。例：{ "部署": ["上线", "发布"] } */
+  synonyms?: Record<string, string[]>
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -26,6 +28,7 @@ export const Config: Schema<Config> = Schema.object({
   writablePaths: Schema.string().default('').description('可写目录路径（逗号分隔），如 集合A,集合B/目录1；留空 = 全库只读（默认）'),
   cacheTtlMs: Schema.number().min(1000).max(300000).default(60000).description('读取缓存有效期（毫秒），默认 60000'),
   localSaveDir: Schema.string().default('').description('本地保存目录：搜索结果/文档可存为 Markdown 文件的位置；留空 = $DSH_HOME/outline-auto-saves'),
+  synonyms: Schema.dict(Schema.array(Schema.string())).default({}).description('同义词/别名表（原词 → 替换词列表）：搜索零命中时自动用替换词重试，如 { "部署": ["上线", "发布"] }'),
 })
 
 export type { Context }

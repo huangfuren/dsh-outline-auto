@@ -15,6 +15,8 @@ export interface Config {
     cacheTtlMs?: number;
     /** 本地保存目录：把搜索结果/文档存为 Markdown 文件的位置；留空 = $DSH_HOME/outline-auto-saves */
     localSaveDir?: string;
+    /** 同义词/别名表（原词 → 替换词列表）：搜索零命中时自动用替换词重试。例：{ "部署": ["上线", "发布"] } */
+    synonyms?: Record<string, string[]>;
 }
 export declare const Config: Schema<Config>;
 export type { Context };

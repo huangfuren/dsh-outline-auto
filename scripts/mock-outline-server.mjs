@@ -21,6 +21,7 @@ export function createMockOutlineServer() {
       if (req.url === '/api/documents.search') {
         const query = String(parsed.query ?? '').toLowerCase()
         const limit = Number(parsed.limit ?? 10)
+        const offset = Number(parsed.offset ?? 0) || 0
         const collectionId = String(parsed.collectionId ?? '').trim()
         const userId = String(parsed.userId ?? '').trim()
         const updatedAfter = String(parsed.updatedAfter ?? '').trim()
@@ -31,8 +32,8 @@ export function createMockOutlineServer() {
           const after = new Date(updatedAfter).getTime()
           if (!Number.isNaN(after)) matches = matches.filter((doc) => new Date(doc.updatedAt).getTime() >= after)
         }
-        const hits = matches.slice(0, limit)
-          .map((doc) => ({ context: doc.text.slice(0, 40), document: { id: doc.id, title: doc.title, url: doc.url, collectionId: doc.collectionId, updatedAt: doc.updatedAt } }))
+        const hits = matches.slice(offset, offset + limit)
+          .map((doc) => ({ context: doc.text.slice(0, 40), document: { id: doc.id, title: doc.title, url: doc.url, collectionId: doc.collectionId, updatedAt: doc.updatedAt, user: { id: doc.authorId } } }))
         send(200, { data: hits, pagination: { total: matches.length } })
         return
       }
@@ -47,6 +48,16 @@ export function createMockOutlineServer() {
         send(200, {
           data: DOCS.slice(0, limit).map((d) => ({ id: d.id, title: d.title, url: d.url, collectionId: d.collectionId, updatedAt: d.updatedAt })),
           pagination: { total: DOCS.length },
+        })
+        return
+      }
+      if (req.url.startsWith('/api/users.list')) {
+        send(200, {
+          data: [
+            { id: 'user-1', name: '张三', email: 'zhangsan@example.com' },
+            { id: 'user-2', name: '李四' },
+          ],
+          pagination: { total: 2 },
         })
         return
       }

@@ -593,4 +593,25 @@ describe('OutlineClient', () => {
     const { hits } = await client.searchDocuments('x', 5)
     expect(hits[0]!.authorName).toBeUndefined()
   })
+
+  it('相同查询命中搜索缓存（不重复打 API）；写操作后缓存失效', async () => {
+    let calls = 0
+    const client = new OutlineClient({
+      baseUrl: 'https://outline.example.com',
+      apiToken: 'tok',
+      cacheTtlMs: 5000,
+      fetchImpl: stubFetch(async (url) => {
+        if (url.includes('users.list')) return { status: 200, body: { data: [], pagination: { total: 0 } } }
+        if (url.includes('documents.search')) { calls += 1; return { status: 200, body: { data: [{ document: { id: 'd1', title: 'T', url: '/d', collectionId: 'c', updatedAt: '', user: { id: 'u1' } }, context: '' }], pagination: { total: 1 } } } }
+        if (url.includes('documents.create')) return { status: 200, body: { data: { id: 'd2', title: '新', url: '/d2', published: true } } }
+        return { status: 200, body: { data: {}, pagination: { total: 0 } } }
+      }),
+    })
+    await client.searchDocuments('缓存测试', 10)
+    await client.searchDocuments('缓存测试', 10) // 命中缓存
+    expect(calls).toBe(1)
+    await client.createDocument({ collectionId: 'c', title: '新', text: 'x' }) // 写 → 缓存失效
+    await client.searchDocuments('缓存测试', 10)
+    expect(calls).toBe(2)
+  })
 })

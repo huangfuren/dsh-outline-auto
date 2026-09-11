@@ -16,6 +16,8 @@ export interface OutlineSearchHit {
 export interface OutlineSearchResult {
   total: number
   hits: OutlineSearchHit[]
+  /** 多词查询零命中时自动用首词重试成功后，记录实际生效的首词。 */
+  retriedWith?: string
 }
 
 export interface OutlineDocument {
@@ -76,6 +78,9 @@ export class OutlineClient {
   private collectionsCache: { expires: number; collections: OutlineCollection[] } | null = null
   /** listUsers 的短期缓存（id→name 映射 + 姓名解析复用）。 */
   private usersCache: { expires: number; users: OutlineUser[] } | null = null
+  /** searchDocuments 结果的短期缓存（key = 归一化查询参数），同 query 连续提问不重复打 API。 */
+  private readonly searchCache = new Map<string, { expires: number; result: OutlineSearchResult }>()
+  private static readonly SEARCH_CACHE_MAX_ENTRIES = 50
 
   constructor(options: OutlineClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '')
@@ -187,6 +192,10 @@ export class OutlineClient {
   }
 
   async searchDocuments(query: string, limit: number, collectionId?: string, filters?: { userId?: string; updatedAfter?: string }, offset = 0): Promise<OutlineSearchResult> {
+    // 结果短期缓存：同 query 连续提问不重复打 API；写操作（create/update/delete）统一 clear 失效。
+    const cacheKey = JSON.stringify([query, limit, collectionId ?? '', filters?.userId ?? '', filters?.updatedAfter ?? '', offset])
+    const cachedSearch = this.searchCache.get(cacheKey)
+    if (cachedSearch !== undefined && cachedSearch.expires > Date.now()) return cachedSearch.result
     const json = await this.requestJson(`/api/documents.search`, {
       query,
       limit,
@@ -225,7 +234,19 @@ export class OutlineClient {
       }
     }
     const total = typeof pagination.total === 'number' ? pagination.total : hits.length
-    return { total, hits }
+    const result: OutlineSearchResult = { total, hits }
+    this.searchCache.set(cacheKey, { expires: Date.now() + this.cacheTtlMs, result })
+    if (this.searchCache.size > OutlineClient.SEARCH_CACHE_MAX_ENTRIES) {
+      const oldest = this.searchCache.keys().next().value
+      if (oldest !== undefined) this.searchCache.delete(oldest)
+    }
+    return result
+  }
+
+  /** 写操作后失效搜索缓存（结果可能随增删改变化）。 */
+  private invalidateCaches(): void {
+    this.collectionsCache = null
+    this.searchCache.clear()
   }
 
   /** 统计 Outline 知识库文档总数（documents.list 分页 total；不含已删除/回收站文档）。 */
@@ -327,8 +348,8 @@ export class OutlineClient {
       publish: input.publish ?? true,
       ...(input.parentDocumentId !== undefined && input.parentDocumentId !== '' ? { parentDocumentId: input.parentDocumentId } : {}),
     })
-    // 新建后集合文档数变化，失效集合缓存
-    this.collectionsCache = null
+    // 新建后搜索结果与集合数都变化，统一失效缓存
+    this.invalidateCaches()
     return {
       id: typeof data.id === 'string' ? data.id : '',
       url: this.absolutize(typeof data.url === 'string' ? data.url : ''),
@@ -343,9 +364,9 @@ export class OutlineClient {
     if (input.title !== undefined && input.title !== '') payload.title = input.title
     if (input.text !== undefined && input.text !== '') payload.text = input.text
     const data = await this.request<Record<string, unknown>>(`/api/documents.update`, payload)
-    // 更新后清文档缓存与集合缓存，避免 60s 内读到旧内容且集合文档数与缓存不符
+    // 更新后清文档缓存与集合/搜索缓存，避免 60s 内读到旧内容
     this.docCache.delete(id)
-    this.collectionsCache = null
+    this.invalidateCaches()
     return {
       id: typeof data.id === 'string' ? data.id : id,
       url: this.absolutize(typeof data.url === 'string' ? data.url : ''),
@@ -358,9 +379,9 @@ export class OutlineClient {
   async deleteDocument(id: string): Promise<{ success: boolean }> {
     // 本实例 delete 响应形如 {success:true, ok:true}，无 data 字段 → 用 requestJson 直接读
     const json = await this.requestJson(`/api/documents.delete`, { id })
-    // 删除后清除文档缓存与集合缓存（文档数/可见性变化）
+    // 删除后清文档缓存与集合/搜索缓存（文档数/可见性变化）
     this.docCache.delete(id)
-    this.collectionsCache = null
+    this.invalidateCaches()
     return { success: json.success !== false }
   }
 

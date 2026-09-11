@@ -80,7 +80,13 @@ export function apply(ctx: Context, config: Config = {} as Config) {
     onChange: () => {},
   })
 
-  ctx.tools.register(outlineSearchTool(makeClient, config.searchLimit ?? 10, getLocalSaveDir))
+  // 同义词/别名表：settings 用户层 → 插件配置行 → 空（关闭回退）。
+  const getSynonyms = (): Record<string, string[]> => {
+    const s = settingsSource()
+    return s.synonyms ?? config.synonyms ?? {}
+  }
+
+  ctx.tools.register(outlineSearchTool(makeClient, config.searchLimit ?? 10, getLocalSaveDir, getSynonyms))
   ctx.tools.register(outlineGetDocumentTool(makeClient, getLocalSaveDir))
   ctx.tools.register(outlineCountTool(makeClient))
   ctx.tools.register(outlineListCollectionsTool(makeClient))

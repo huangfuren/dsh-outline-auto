@@ -4,7 +4,7 @@
 
 A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getoutline.com/) knowledge base from your conversation. Give it a keyword — it returns matching documents with **titles, snippets, and links**; ask for one of them and it returns the **full content in Markdown**. Approved write tools can create, update, and delete documents, with an approval prompt before every write.
 
-> Project status: 0.6.0. The current feature set is covered by unit tests, a Mock-server smoke, and a settings-chain integration check. The supported DSH baseline is `0.1.1-rc.2`; older Harness builds are not certified.
+> Project status: 0.7.0. The current feature set is covered by unit tests, a Mock-server smoke, and a settings-chain integration check. The supported DSH baseline is `0.1.1-rc.2`; older Harness builds are not certified.
 
 
 ## The core idea
@@ -45,10 +45,10 @@ A DeepSeek Harness plugin that searches and reads an [Outline](https://www.getou
 Install from the public GitHub repository, pinned to the latest release tag:
 
 ```bash
-dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.git#v0.6.0
+dsh plugin --profile web add git+https://github.com/huangfuren/dsh-outline-auto.git#v0.7.0
 ```
 
-The `#v0.6.0` suffix pins the exact release; omit it to track the latest commit on `main`.
+The `#v0.7.0` suffix pins the exact release; omit it to track the latest commit on `main`.
 
 Restart `dsh web` after installation. The published package contains the built `lib/` directory, so a normal Git install does not depend on a local build step. Its install hook only removes stale references to this plugin's old package name (`dsh-outline-ai`) from the selected DSH profile; it does not remove or rewrite unrelated plugins.
 
@@ -96,8 +96,9 @@ The recommended way is the **GUI card** (Settings → Plugins → plugin configu
 | API Token | create one at Outline → Settings → API keys |
 | Writable paths (empty = read-only) | comma-separated directory paths, e.g. `Collection A,Knowledge Base/Dir 1`; only these directories and their children are writable |
 | Local save directory | local directory where `outline_save_local` writes Markdown files; empty = `$DSH_HOME/outline-auto-saves` (fallback `$HOME/outline-auto-saves`). Restart the web profile after changing |
+| Synonyms (config row only) | `synonyms` in the plugin config row (YAML map, e.g. `synonyms: { 部署: [上线, 发布] }`): on a zero-hit search the plugin retries with mapped words (ladder: original → first word → synonyms) before giving up |
 
-Click **Save** — applies immediately. Alternatively, configure via environment variables (`OUTLINE_BASE_URL` / `OUTLINE_API_TOKEN`) or the plugin config row in `cordis.patch.yml`. Advanced options in the plugin config row: `timeoutMs` (request timeout, default 15000) and `cacheTtlMs` (read-cache lifetime in ms, default 60000, range 1000–300000).
+Click **Save** — applies immediately. Alternatively, configure via environment variables (`OUTLINE_BASE_URL` / `OUTLINE_API_TOKEN`) or the plugin config row in `cordis.patch.yml`. Advanced options in the plugin config row: `timeoutMs` (request timeout, default 15000), `cacheTtlMs` (read-cache lifetime in ms, default 60000, range 1000–300000) and `synonyms` (see above; config-row only, restart to reload).
 
 **Read-only by default (v0.3.0)**: with no writable paths configured, all write tools (`outline_create` / `outline_update_document` / `outline_delete`) refuse to run — no approval prompt is even shown. To allow writes, list the directories that may be modified. A path like `Knowledge Base/Dir 1` covers every child under `Dir 1`; a bare `Collection A` covers the whole collection. Any path that cannot be resolved (missing collection, invisible directory, moved document) is refused — writes always fail closed.
 
@@ -111,7 +112,7 @@ The public package must not contain organization-specific collection names, URLs
 
 | Tool | Description |
 | --- | --- |
-| `outline_search(query, limit?, offset?, collectionId?, author?, userId?, updatedAfter?)` | Keyword search; returns the match **total**, plus title, snippet, document id, author name and link per hit. Optional filters: collection, author (name/email — resolved via users.list and pushed down server-side as `userId`; ambiguous names return the candidate list), updated-after; `offset` skips the first N hits for pagination. |
+| `outline_search(query, limit?, offset?, collectionId?, author?, userId?, updatedAfter?, all?)` | Keyword search; returns the match **total**, plus title, snippet, document id, author name and link per hit. Optional filters: collection, author (name/email — resolved via users.list and pushed down server-side as `userId`; ambiguous names return the candidate list), updated-after; `offset` skips the first N hits for pagination; `all=true` auto-paginates and de-duplicates up to 100 hits. Identical queries are short-TTL cached (invalidated by writes); multi-word queries with zero hits automatically retry with the first word. |
 | `outline_get_document(id, maxLength?)` | Fetch a document's full Markdown by id; `maxLength` caps the returned text (default 20000). |
 | `outline_count()` | Total number of documents in the knowledge base (`documents.list` total, exact; excludes trashed/deleted — the true total may be slightly higher). |
 | `outline_list_collections()` | List visible collections (id, name, permission, document count). |

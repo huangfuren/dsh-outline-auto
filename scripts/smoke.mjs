@@ -19,7 +19,7 @@ const ctx = {
   on: () => () => {},
   get: (name) => name === 'approval' ? { request: async () => 'allowed-once' } : undefined,
 }
-apply(ctx, { baseUrl, apiToken: 'test-token', timeoutMs: 5000, searchLimit: 5, writablePaths: '测试集合' })
+apply(ctx, { baseUrl, apiToken: 'test-token', timeoutMs: 5000, searchLimit: 5, writablePaths: '测试集合', synonyms: { '部暑': ['部署'] } })
 const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool]))
 const exec = {}
 let failures = 0
@@ -65,6 +65,15 @@ try {
   // 验证 snippet 保留原始 HTML 高亮标签
   const searchWithHtml = await byName.outline_search.execute({ query: '部署', limit: 1 }, exec)
   check('outline_search snippet 保留原始上下文', searchWithHtml.hits[0] && typeof searchWithHtml.hits[0].snippet === 'string', JSON.stringify(searchWithHtml))
+  // 验证命中附带作者名（mock server 已返回 user.id + users.list 解析姓名）
+  const withAuthor = await byName.outline_search.execute({ query: '部署', limit: 5 }, exec)
+  check('outline_search 命中附带作者名', withAuthor.hits[0] && typeof withAuthor.hits[0].authorName === 'string' && withAuthor.hits[0].authorName.length > 0, JSON.stringify(withAuthor.hits[0]))
+  // 验证 all=true 自动翻页（mock server 支持 offset）抓全匹配
+  const all = await byName.outline_search.execute({ query: '规范', limit: 1, all: true }, exec)
+  check('outline_search all=true 翻页抓全', all.hits.length >= 2, `got ${all.hits.length} hits`)
+  // 验证同义词回退阶梯（错别字 部暑 → 词表映射到 部署）
+  const syn = await byName.outline_search.execute({ query: '部暑', limit: 5 }, exec)
+  check('outline_search 同义词回退', syn.hits.length >= 1 && syn.retriedWith === '部署', JSON.stringify({ hits: syn.hits.length, retriedWith: syn.retriedWith }))
   // 验证参数校验在 execute 层 fail-closed 兜底（pre-execute 未注册时）
   let paramError = false
   try { await byName.outline_update_document.execute({ id: 'doc-1' }, exec) } catch (e) { paramError = e.message?.includes('至少需要') }

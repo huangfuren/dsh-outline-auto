@@ -1,7 +1,17 @@
-import type { OutlineClient, OutlineDocument, OutlineCollection } from './client.js';
+import type { OutlineClient, OutlineSearchHit, OutlineDocument, OutlineCollection } from './client.js';
 export declare const SEARCH_MAX_LIMIT = 25;
+/** all=true 时自动翻页的总条数上限（防超大结果集撑爆上下文）。 */
+export declare const SEARCH_ALL_MAX = 100;
 export declare const DOCUMENT_DEFAULT_MAX_LENGTH = 20000;
 export declare const DOCUMENT_MAX_LENGTH_CAP = 200000;
+/**
+ * 本地轻量重排：Outline 服务端只按关键词相关度排序，这里补两点——
+ * 标题命中权重高于摘要命中；一年内更新的文档有新近度加成（2 分随年龄递减到 0）。
+ * 纯函数、稳定排序（同分保持服务端原序）、可单测；命中 ≤1 时原样返回。
+ */
+export declare function rerankHits(hits: OutlineSearchHit[], query: string): OutlineSearchHit[];
+/** 同义词回退候选：整词命中词表优先，其次逐词替换；去重、排除原词、上限 3 个变体。 */
+export declare function synonymVariants(query: string, synonyms: Record<string, string[]>): string[];
 /** 本地保存默认目录名（相对 DSH 主目录；DSH 主目录不可得时回退到用户主目录）。 */
 export declare const LOCAL_SAVE_DIRNAME = "outline-auto-saves";
 /** 解析本地保存目录：配置优先，其次 $DSH_HOME/outline-auto-saves，最后 $HOME/outline-auto-saves。 */
@@ -25,7 +35,7 @@ export declare const SAVE_MAX_DOCS = 50;
 /** 把多篇文档合并为一份带目录的 Markdown（目录 → 各篇全文）。 */
 export declare function mergeDocumentsToMarkdown(docs: OutlineDocument[], title: string): string;
 export declare function outlineSaveLocalTool(getSaveDir: () => string, makeClient: () => OutlineClient): import("@deepseek-ai/dsh-tools").ToolDefinition;
-export declare function outlineSearchTool(makeClient: () => OutlineClient, defaultLimit: number, getSaveDir?: () => string): import("@deepseek-ai/dsh-tools").ToolDefinition;
+export declare function outlineSearchTool(makeClient: () => OutlineClient, defaultLimit: number, getSaveDir?: () => string, getSynonyms?: () => Record<string, string[]>): import("@deepseek-ai/dsh-tools").ToolDefinition;
 export declare function outlineListUsersTool(makeClient: () => OutlineClient): import("@deepseek-ai/dsh-tools").ToolDefinition;
 export declare function outlineCountTool(makeClient: () => OutlineClient): import("@deepseek-ai/dsh-tools").ToolDefinition;
 export declare function outlineGetDocumentTool(makeClient: () => OutlineClient, getSaveDir?: () => string): import("@deepseek-ai/dsh-tools").ToolDefinition;
